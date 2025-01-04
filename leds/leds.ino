@@ -1,5 +1,6 @@
-// Projet baree de LEDs 
-// V1 : 2/1/2024
+// Projet barre de LEDs 
+// V1 : 2/1/2024 : Dans cette version, les LEDS s'allument petit à petit en augmentant de brillance. 
+// Une fois au bout de la rangée, elles s'éteignent petit à petit en diminuant la brillance
 
 #include <FastLED.h>
 
