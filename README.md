@@ -1,9 +1,11 @@
 Salut Bernie
 
 Je vais mettre sur cette page les sources des différents projets sur l'arduino.
-Pour le moment, il n'y a qu'un projets "leds"
+Pour le moment, il y a deux projets "leds" : 
+leds est le répertoire qui contient la version initiale
+ledsv2 est la version où toutes les leds s'allument en même temps.
 
-Pour l'installer sur ton PC, tu ouvres le répertoire leds, tu cliques sur le fichier leds.ino puis enfin sur le bouton "RAW" en haut à droite.
+Pour l'installer sur ton PC, tu ouvres le répertoire leds ou ledsV2 (selon la version que tu veux utiliser), tu cliques sur le fichier source dont le nom se termine par ".ino" puis enfin sur le bouton "RAW" en haut à droite.
 Tu verras ensuite le fichier source apparaitre de façon brute que tu pourras copier/coller dans ton logiciel.
 
 Et pour que la compilation fonctionne, il te faudra au préalable installer la bibliothèqe fastled.
