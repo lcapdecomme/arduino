@@ -6,10 +6,10 @@
 
 // 5 variables pour modifier le comportement du programme
 #define NUM_LEDS 6            // Combien de leds 
-#define DATA_PIN 5            // Port sur l'arduino 
-#define MAXLUMINOSITE 100     // Luminosité maximumum sachant que cela varie de 0 à 255
+#define DATA_PIN 8            // Port sur l'arduino 
+#define MAXLUMINOSITE 10     // Luminosité maximumum sachant que cela varie de 0 à 255
 #define NOMBREITERATION 5     // Nombre d'itération pour passer de la brillance 0 à MAXLUMINOSITE 
-#define DELAI1  150           // Attente en milliseconde entre changement de brillance entre deux passages
+#define DELAI1  1000           // Attente en milliseconde entre changement de brillance entre deux passages
 #define DELAI2  500           // Attente en milliseconde avant changement de sens 
 
 
