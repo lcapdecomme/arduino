@@ -25,3 +25,11 @@ Attention juste que le répertoire lib contient 4 librairies à installer sur to
 
 
 Lionel
+
+
+
+PS :  j'ai changé le nom du fichier de la clef privée et elle ne porte pas le nom par défaut (~/.ssh/id_rsa and ~/.ssh/identity). Il faut donc l'ajouter à l'agent SSH d'authentification après chaque redémarrage/renouvellement session terminal avec la commande :  ssh-add ~/.ssh/github_arduino
+
+
+
+
