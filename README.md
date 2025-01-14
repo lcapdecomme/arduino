@@ -6,6 +6,7 @@ Pour le moment, il y a deux projets "leds" :
 * ledsv2 est la version où toutes les leds s'allument en même temps.
 * panneauleds est la version 1 des deux matrices avec le décompte jusqu'en 2036
 * panneauledsv1 et panneauledsv2 sont des tests d'écriture sur des matrices  ws2812b
+* velleman permet de faire défiler un texte sur 2 matrices Velleman de type VMA419
 
 1. Concernant les projets leds
 
