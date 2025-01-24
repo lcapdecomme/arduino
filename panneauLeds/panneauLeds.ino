@@ -23,12 +23,26 @@
 
 
 // 5 variables pour modifier le comportement du programme
-#define PIN_MATRICE 8         // Port de la matrice sur l'arduino 
+#define PIN_MATRICE 6         // Port de la matrice sur l'arduino 
 #define LUMINOSITE 50         // Luminosité de l'affichage sachant que cela varie de 0 à 255
 #define HAUTEUR_MATRICE 8     // Nombre de pixel en hauteur. On laisse 8 sur ce modèle
 #define LARGEUR_MATRICE 64    // Nombre de pixel en largeur. On laisse 64 sur ce modèle (2 matrices de 32 pixels)
 
 #define DELAI   1000          // Attente en milliseconde entre deux calculs d'heure
+
+#define RED      255          // Si blanc, tout mettre à 255
+#define GREEN    0
+#define BLUE     0 
+
+  // Date cible : Par exemple 23/02/2025 s'écrit : 2025, 2, 23
+  // Date cible : Par exemple 1/1/2036 s'écrit : 2036, 1, 1
+#define DATE_CIBLE targetDate(2036, 1, 1, 0, 0, 0);
+
+
+
+
+// Clock se branche sur les SCL (21 sur mega) et SDA (20 sur mega)
+ 
 
 
 // ****** Début du programme ***********
@@ -49,26 +63,21 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(LARGEUR_MATRICE,HAUTEUR_MATRICE,P
   NEO_MATRIX_COLUMNS + NEO_MATRIX_ZIGZAG,
   NEO_GRB + NEO_KHZ800);
 
-void setup(){
-  Serial.begin(9600);
-  
-  
+void setup(){  
   matrix.begin();
   matrix.setTextWrap(false);
   matrix.setBrightness(LUMINOSITE);
-    matrix.setTextColor(matrix.Color(255, 0, 0)); // Couleur du texte (rouge ici)
+  matrix.setTextColor(matrix.Color(RED, GREEN, BLUE)); // Couleur du texte (rouge ici)
   // Changer la taille de la police
   // matrix.setFont(&TomThumb);  // Police de petite taille
   //matrix.setFont(&FreeSans9pt7b);  // Police un peu plus grande
   matrix.clear();
 
-
-
   // Initialise composant time
   rtc.begin();
 
-
   delay(1000);
+  pinMode(13, OUTPUT);
 }
 
 
@@ -76,10 +85,10 @@ void setup(){
 // Affichage fixe
 void loop() {
 
-  // Date cible : 1er janvier 2030 à 00:00:00
-  DateTime targetDate(2036, 1, 1, 0, 0, 0);
-
+  DateTime DATE_CIBLE
+  
   DateTime now = rtc.now();
+  // Serial.println(now.unixtime());
  
   // Calculer la différence en jours, heures, minutes et secondes
   long secondsLeft = targetDate.unixtime() - now.unixtime();
@@ -95,16 +104,18 @@ void loop() {
   int secondsLeftFinal = secondsLeft % 60;
 
   // Afficher les résultats
-  Serial.print("Il reste ");
-  Serial.print(daysLeft);
-  Serial.print(" jours, ");
-  Serial.print(hoursLeft);
-  Serial.print(" heures, ");
-  Serial.print(minutesLeft);
-  Serial.print(" minutes et ");
-  Serial.println(secondsLeftFinal);
 
-    String daysLeftj=String(daysLeft)+"";
+    String daysLeftj="";
+    if (daysLeft<1000) {
+      daysLeftj=daysLeftj+"0";
+    }
+    if (daysLeft<100) {
+      daysLeftj=daysLeftj+"0";
+    }
+    if (daysLeft<10) {
+      daysLeftj=daysLeftj+"0";
+    }
+    daysLeftj=daysLeftj+String(daysLeft)+"";
     
     String daysLefth="";
     if (hoursLeft<10) {
@@ -125,7 +136,6 @@ void loop() {
     daysLefts=daysLefts+String(secondsLeftFinal);
     
     matrix.fillScreen(0);
-    //matrix.setCursor(10,6); 
     matrix.setCursor(1,0);    
     matrix.print(daysLeftj);
     matrix.setCursor(27,0);    
@@ -164,17 +174,8 @@ void loopDefilement() {
   int secondsLeftFinal = secondsLeft % 60;
 
   // Afficher les résultats
-  Serial.print("Il reste ");
-  Serial.print(daysLeft);
-  Serial.print(" jours, ");
-  Serial.print(hoursLeft);
-  Serial.print(" heures, ");
-  Serial.print(minutesLeft);
-  Serial.print(" minutes et ");
-  Serial.println(secondsLeftFinal);
 
     String resultat=String(daysLeft)+"."+String(hoursLeft)+"."+String(minutesLeft)+"."+String(secondsLeftFinal);
-  Serial.println(resultat);
     
   // Position 64 à -30
   for(int x=64; x>=-68; x-=1) { 
