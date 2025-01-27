@@ -1,5 +1,6 @@
 // Projet panneau de LEDs 
-// V2 : 11/1/2024 : Programme définitif
+// V2 : 11/1/2024 : Mise au point
+// V3 : 27/1/2024 : Programme définitif
 
 
 // Librairies à utiliser : 
@@ -16,10 +17,11 @@
 #include <Wire.h>
 #include <RTClib.h>
 
+// Si changement de Police 
 // Inclure la police TomThumb (police petite taille)
-//#include <Fonts/TomThumb.h>
+// #include <Fonts/TomThumb.h>
 // Inclure la police Mini9 (un peu plus grande)
-//#include <Fonts/FreeSans9pt7b.h>
+// #include <Fonts/FreeSans9pt7b.h>
 
 
 // 5 variables pour modifier le comportement du programme
@@ -30,23 +32,19 @@
 
 #define DELAI   1000          // Attente en milliseconde entre deux calculs d'heure
 
-#define RED      255          // Si blanc, tout mettre à 255
-#define GREEN    0
+#define RED      255          // Si blanc, mettre toutes les valeurs à 255
+#define GREEN    0            // Si Red, mettre RED a 255 et les autres valeurs à 0
 #define BLUE     0 
 
-  // Date cible : Par exemple 23/02/2025 s'écrit : 2025, 2, 23
-  // Date cible : Par exemple 1/1/2036 s'écrit : 2036, 1, 1
-#define DATE_CIBLE targetDate(2036, 1, 1, 0, 0, 0);
-
-
+// Si Date cible : Par exemple 23/02/2025 s'écrit : 2025, 2, 23
+// Si Date cible : Par exemple 1/1/2036 s'écrit : 2036, 1, 1
+// Date Apophis : 14 avril 2036 mettre 2036, 4, 14 
+#define DATE_CIBLE targetDate(2036, 4, 14, 0, 0, 0);
 
 
 // Clock se branche sur les SCL (21 sur mega) et SDA (20 sur mega)
  
-
-
 // ****** Début du programme ***********
-
 
 // Initialisation du temps
 RTC_DS3231 rtc;
@@ -152,7 +150,7 @@ void loop() {
 
 
 
-
+// Test de défilement : Non utilisé dans ce programme
 void loopDefilement() {
 
   // Date cible : 1er janvier 2030 à 00:00:00
