@@ -38,7 +38,7 @@
 
 // Si Date cible : Par exemple 23/02/2025 s'écrit : 2025, 2, 23
 // Si Date cible : Par exemple 1/1/2036 s'écrit : 2036, 1, 1
-// Date Apophis : 14 avril 2036 mettre 2036, 4, 14 
+// Date Apophis : 14 avril 2036 mettre 2036, 4, 14 (Page 229 du livre)
 #define DATE_CIBLE targetDate(2036, 4, 14, 0, 0, 0);
 
 
