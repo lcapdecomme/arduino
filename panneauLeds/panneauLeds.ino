@@ -25,7 +25,8 @@
 
 
 // 5 variables pour modifier le comportement du programme
-#define PIN_MATRICE 6         // Port de la matrice sur l'arduino 
+#define PIN_MATRICE 1         // Port de la matrice sur l'arduino (Ici par exemple 1) 
+                              // Si ESP8266, mettre obligatoirement la valeur 1 et brancher la data sur la PIN TX !!
 #define LUMINOSITE 50         // Luminosité de l'affichage sachant que cela varie de 0 à 255
 #define HAUTEUR_MATRICE 8     // Nombre de pixel en hauteur. On laisse 8 sur ce modèle
 #define LARGEUR_MATRICE 64    // Nombre de pixel en largeur. On laisse 64 sur ce modèle (2 matrices de 32 pixels)
@@ -62,6 +63,7 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(LARGEUR_MATRICE,HAUTEUR_MATRICE,P
   NEO_GRB + NEO_KHZ800);
 
 void setup(){  
+  Serial.begin(9600);
   matrix.begin();
   matrix.setTextWrap(false);
   matrix.setBrightness(LUMINOSITE);
@@ -115,11 +117,16 @@ void loop() {
     }
     daysLeftj=daysLeftj+String(daysLeft)+"";
     
+  Serial.print(daysLeftj+" ");
+    
     String daysLefth="";
     if (hoursLeft<10) {
       daysLefth=daysLefth+"0";
     }
     daysLefth=daysLefth+String(hoursLeft)+"";
+
+    
+  Serial.print(daysLefth+" ");
     
     String daysLeftm="";
     if (minutesLeft<10) {
@@ -127,11 +134,15 @@ void loop() {
     }
     daysLeftm=daysLeftm+String(minutesLeft)+"";
     
+  Serial.print(daysLeftm+" ");
+  
     String daysLefts="";
     if (secondsLeftFinal<10) {
       daysLefts=daysLefts+"0";
     }
     daysLefts=daysLefts+String(secondsLeftFinal);
+    
+  Serial.println(daysLefts+" ");
     
     matrix.fillScreen(0);
     matrix.setCursor(1,0);    
