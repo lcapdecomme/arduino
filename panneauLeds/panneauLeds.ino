@@ -75,7 +75,7 @@ void setup(){
 
   // Initialise composant time
   rtc.begin();
-  rtc.adjust(DateTime(__DATE__, __TIME__));  // Time and date is expanded to date and time on your computer at compiletime
+  //rtc.adjust(DateTime(__DATE__, __TIME__));  // Time and date is expanded to date and time on your computer at compiletime
 
   delay(1000);
   // pinMode(13, OUTPUT);   // A quoi ca sert ? 
