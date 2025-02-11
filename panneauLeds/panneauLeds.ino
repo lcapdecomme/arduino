@@ -63,7 +63,7 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(LARGEUR_MATRICE,HAUTEUR_MATRICE,P
   NEO_GRB + NEO_KHZ800);
 
 void setup(){  
-  Serial.begin(9600);
+  // Serial.begin(9600);
   matrix.begin();
   matrix.setTextWrap(false);
   matrix.setBrightness(LUMINOSITE);
@@ -75,9 +75,10 @@ void setup(){
 
   // Initialise composant time
   rtc.begin();
+  rtc.adjust(DateTime(__DATE__, __TIME__));  // Time and date is expanded to date and time on your computer at compiletime
 
   delay(1000);
-  pinMode(13, OUTPUT);
+  // pinMode(13, OUTPUT);   // A quoi ca sert ? 
 }
 
 
