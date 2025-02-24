@@ -13,7 +13,7 @@
 #include "Adafruit_NeoPixel.h"
 
 // Nombre de led : 256, Pin 8, Pilotage des leds NEO_KHZ800
-Adafruit_NeoPixel led(256,8, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel led(512,2, NEO_GRB + NEO_KHZ800);
 
 
 void setup() {

@@ -9,10 +9,10 @@
 //
 //    VCC → 5V sur l’Arduino
 //    GND → GND sur l’Arduino
-//    SDA → A4 (broche I2C sur Arduino Nano)
 //    SCL → A5 (broche I2C sur Arduino Nano)
+//    SDA → A4 (broche I2C sur Arduino Nano)
 
-// Le piezo est branché sur la pin 3
+// Le piezo est branché sur le fil rouge vers la pin 3 (D3) et le fil noir sur GND 
 
 
 // Voici les variables que l'on peut ajuster sur ce programme 
@@ -21,8 +21,8 @@
 #define BUZZER_PIN 3  // Pin du buzzer
 
 // Plage des fréquences (en Hz) : Cela permet de définir l'intervalle de la fréquence
-#define MIN_FREQ 10000  // Fréquence minimale (on ira jamais en dessous) 
-#define MAX_FREQ 20000  // Fréquence maximale (on ira jamais au dessus)
+#define MIN_FREQ 15000  // Fréquence minimale (on ira jamais en dessous) 
+#define MAX_FREQ 25000  // Fréquence maximale (on ira jamais au dessus)
 
 // Plage des durées (en secondes) : Cela permet de définir l'intervalle de temps d'exécution d'une fréquence
 #define MIN_TIME 5      // Durée minimum d'une fréquence
@@ -67,13 +67,14 @@ void loop() {
   for (int secondsLeft = duration; secondsLeft > 0; secondsLeft--) {
     display.clearDisplay();
     
-    display.setCursor(10, 10);
-    display.print("Freq: ");
+    display.setTextSize(2);
+    display.setCursor(0, 10);
+    display.print("F:");
     display.print(frequency);
     display.print(" Hz");
     
-    display.setCursor(10, 30);
-    display.print("Temps: ");
+    display.setCursor(0, 40);
+    display.print("T:");
     display.print(secondsLeft);
     display.print(" sec");
 
