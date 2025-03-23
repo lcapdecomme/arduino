@@ -47,7 +47,7 @@ characters as part of the hexadecimal sequence.
 #include "Arial_Black_16_ISO_8859_1.h"
 
 //Fire up the DMD library as dmd
-#define DISPLAYS_ACROSS 3
+#define DISPLAYS_ACROSS 2
 #define DISPLAYS_DOWN 1
 DMD419 dmd(DISPLAYS_ACROSS, DISPLAYS_DOWN);
 
@@ -85,8 +85,8 @@ void loop(void)
    dmd.clearScreen( true );
    dmd.selectFont(Arial_Black_16_ISO_8859_1);
    // Message sur la matrice
-   //const char *MSG = "Hello Bernie, bon dimanche ;-)";
-   const char *MSG = "+";
+   const char *MSG = "Hello Bernie, bon dimanche ;-)";
+   //const char *MSG = "+";
    dmd.drawMarquee(MSG,strlen(MSG),(32*DISPLAYS_ACROSS)-1,0);
    long start=millis();
    long timer=start;

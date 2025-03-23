@@ -13,7 +13,7 @@
 #include "Adafruit_NeoPixel.h"
 
 // Nombre de led : 256, Pin 8, Pilotage des leds NEO_KHZ800
-Adafruit_NeoPixel led(512,2, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel led(512, 6, NEO_GRB + NEO_KHZ800);
 
 
 void setup() {
@@ -25,13 +25,13 @@ void setup() {
 
 
 // Affiche une animation 
-void loop() {
-  couleurs(10);
+void loop6() {
+  couleurs(100);
 }
 
 void couleurs(int temps) {
   for (long PremiereLedCouleur=0; PremiereLedCouleur<65536; PremiereLedCouleur+=256) {
-    for (int i=0; i<256; i++) { 
+    for (int i=0; i<512; i++) { 
       int ledTeinte = PremiereLedCouleur + (i * 65536 / 256); 
       led.setPixelColor (i, led.gamma32(led.ColorHSV(ledTeinte)));
     }
@@ -42,7 +42,7 @@ void couleurs(int temps) {
 
 
 // Affiche une animation 
-void loop6() {
+void loop5() {
   couleurspas(100);
 }
 
@@ -65,7 +65,7 @@ void couleurspas(int temps) {
 
 
 // Affiche une animation 
-void loop5() {
+void loop4() {
   uint32_t rouge = led.Color (255, 0, 0);
   uint32_t magenta = led.Color (255, 0, 255); 
   uint32_t vert = led.Color (0, 255, 0);
@@ -91,7 +91,7 @@ void tourne3 (uint32_t couleur, uint8_t temp) {
 
 
 // Affiche le drapeau Francais : 10 col. en bleu, 10 col. en blanc, 10 col. en rouge, 
-void loop4() {
+void loop9() {
   led.fill(led.Color(0,0,255),168,80);
   led.show();
   delay(500);
@@ -118,12 +118,12 @@ void loop3() {
 
 
 // Affiche les leds en zigzag
-void loop2() {
+void loop() {
   // Efface le panneau
   led.clear();
-  for (int pixel=0;pixel<255;pixel++) {
+  for (int pixel=0;pixel<511;pixel++) {
     // Affiche les leds une par une en couleur RGB Verte en faible intensité
-    led.setPixelColor(pixel, led.Color(0,5,0));
+    led.setPixelColor(pixel, led.Color(255,255,255));
     led.show();
     delay(50); 
   }

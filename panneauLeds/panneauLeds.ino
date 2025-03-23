@@ -11,6 +11,13 @@
 // Busi :               https://github.com/adafruit/Adafruit_BusIO/releases
 // RtClib :             https://github.com/adafruit/RTClib/releases
 
+
+// Branchement sur un arduino uno
+// Fil rouge Matrice => 5v
+// Fil Vert Data MAtrice => D6
+// Fil Blanc masse Matrice => GND
+
+
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoMatrix.h>
 #include <Adafruit_NeoPixel.h>
@@ -25,7 +32,7 @@
 
 
 // 5 variables pour modifier le comportement du programme
-#define PIN_MATRICE 1         // Port de la matrice sur l'arduino (Ici par exemple 1) 
+#define PIN_MATRICE 6         // Port de la matrice sur l'arduino (Ici par exemple 6 pour D6 sur l'arduino) 
                               // Si ESP8266, mettre obligatoirement la valeur 1 et brancher la data sur la PIN TX !!
 #define LUMINOSITE 50         // Luminosité de l'affichage sachant que cela varie de 0 à 255
 #define HAUTEUR_MATRICE 8     // Nombre de pixel en hauteur. On laisse 8 sur ce modèle
