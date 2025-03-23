@@ -20,6 +20,11 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <FS.h>
+
+// Utilisaiton d'une font personnelle ? 
+// Penser à revoir les coordonnées du texte avec matrix.setCursor 
+// #include "CustomFont8.h"
+
 // Liste des polices ici : https://github.com/adafruit/Adafruit-GFX-Library/tree/master/Fonts
 // #include <Fonts/FreeSans9pt7b.h>
 // #include <Fonts/FreeSans8pt7b.h>
@@ -63,96 +68,109 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(LARGEUR_MATRICE,HAUTEUR_MATRICE,P
   NEO_GRB + NEO_KHZ800);
 
 
-String textToDisplay = "bienvenue";   // Texte par défaut
-
-
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP8266 LED Matrix</title>
+    <title>Bel écran</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
-        }
-        .container {
-            max-width: 400px;
-            margin: 50px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        h1 {
-            font-size: 1.5em;
-            color: #333;
-        }
-        input, select {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 1em;
-        }
-        input[type="submit"] {
-            background: #007BFF;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        input[type="submit"]:hover {
-            background: #0056b3;
-        }
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        input, select, button { padding: 10px; font-size: 16px; margin: 5px; }
+        .container { max-width: 400px; margin: auto; display: flex; flex-direction: column; gap: 10px; }
     </style>
 </head>
 <body>
+
+    <h2>Contrôle de la Matrice LED</h2>
     <div class="container">
-        <h1>Bel écran</h1>
-        <form action="/update" method="get">
-            <input type="text" name="text" placeholder="Entrez votre message" required>
-            <select name="color">
-                <option value="red">Rouge</option>
-                <option value="green">Vert</option>
-                <option value="blue">Bleu</option>
-                <option value="yellow">Jaune</option>
-                <option value="cyan">Cyan</option>
-                <option value="magenta">Magenta</option>
-                <option value="white">Blanc</option>
-            </select>
-            <input type="submit" value="Envoyer">
-        </form>
+        <input type="text" id="textInput" placeholder="Entrez votre texte">
+        <select id="colorSelect">
+            <option value="white">Blanc</option>
+            <option value="red">Rouge</option>
+            <option value="green">Vert</option>
+            <option value="blue">Bleu</option>
+            <option value="yellow">Jaune</option>
+            <option value="cyan">Cyan</option>
+            <option value="magenta">Magenta</option>
+        </select>
+        <button onclick="sendText()">Envoyer</button>
     </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            fetch("/getData")
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById("textInput").value = data.text;
+                    document.getElementById("colorSelect").value = data.color;
+                });
+        });
+
+        function sendText() {
+            let text = document.getElementById("textInput").value;
+            let color = document.getElementById("colorSelect").value;
+            fetch(`/update?text=${encodeURIComponent(text)}&color=${encodeURIComponent(color)}`)
+                .then(response => {
+                    if (response.ok) {
+                        alert("Texte mis à jour !");
+                    }
+                });
+        }
+    </script>
+
 </body>
 </html>
 )rawliteral";
 
 
-
-
 unsigned long lastUpdate = 0;
 const int scrollSpeed = 100;  // Temps en millisecondes entre chaque déplacement
 int textX = LARGEUR_MATRICE;
-uint16_t textColor = matrix.Color(255, 0, 0);  // Rouge par défaut
+// uint16_t textColor = matrix.Color(255, 0, 0);  // Rouge par défaut
+
+String lastText = "bienvenue";   // Texte par défaut
+String lastColor =  "white"; // Blanc par défaut
+
+void saveData() {
+    File file = SPIFFS.open("/data.txt", "w");
+    if (file) {
+        file.println(lastText);
+        file.println(lastColor);
+        file.close();
+    }
+}
+
+void loadData() {
+    if (SPIFFS.exists("/data.txt")) {
+        File file = SPIFFS.open("/data.txt", "r");
+        if (file) {
+            lastText = file.readStringUntil('\n');
+            lastText.trim();
+            lastColor = file.readStringUntil('\n');
+            lastColor.trim();
+            file.close();
+        }
+    }
+}
 
 
 void setup(){  
   Serial.begin(9600);
   delay(1000);
   Serial.println("Démarrage ESP8266....");
-
+  
+  SPIFFS.begin();  // Initialiser SPIFFS
+  loadData();      // Charger les valeurs enregistrées
+  Serial.println("Chargement des valeurs par défaut");
   matrix.begin();
   Serial.println("Initialisation de la matrice");
   matrix.setTextWrap(false);
   matrix.setBrightness(LUMINOSITE);
-  matrix.setTextColor(textColor); // Couleur par defaut
+  //matrix.setTextColor(textColor); // Couleur par defaut
   //matrix.setFont(&FreeSans8pt7b);  // Utilisation de la police avec accents
+  //matrix.setFont(&CustomFont8);
   Serial.println("Démarrage de la matrice....");
   delay(1000);
 
@@ -167,10 +185,11 @@ void setup(){
   // Print ESP8266 Local IP Address
   Serial.println(WiFi.localIP());
 
-  // Servir la page HTML principale et le WS
+  // Servir la page HTML principale et les WS
   server.on("/", HTTP_GET, handleRoot);
   server.on("/update", HTTP_GET, handleUpdate);
-
+  server.on("/getData", HTTP_GET, handleGetData);
+  
   // Start server
   server.begin();
   Serial.println("Serveur web démarré !");
@@ -187,11 +206,11 @@ void loop() {
     matrix.fillScreen(0);
     //matrix.setCursor(textX, HAUTEUR_MATRICE-1);
     matrix.setCursor(textX, 0);
-    matrix.setTextColor(textColor);
-    matrix.print(textToDisplay);
+    matrix.setTextColor(getColor(lastColor));
+    matrix.print(lastText);
        
     textX--;
-    if (textX < -((int)textToDisplay.length() * 6)) {
+    if (textX < -((int)lastText.length() * 6)) {
         textX = LARGEUR_MATRICE;
     }
 
@@ -200,15 +219,16 @@ void loop() {
 }
 
 
+// Evenements du WS et de la page WEB
 void handleRoot() {
     server.send(200, "text/html", index_html);
 }
 
 void handleUpdate() {
     if (server.hasArg("text") && server.hasArg("color")) {
-        textToDisplay = normalizeText(urlDecode(server.arg("text")));  // Conversion avant affichage avec suppression des accents
-        Serial.println(textToDisplay);
-        textColor = getColor(server.arg("color"));
+        lastText = normalizeText(urlDecode(server.arg("text")));  // Conversion avant affichage avec suppression des accents
+        Serial.println(lastText);
+        lastColor = server.arg("color");
         textX = LARGEUR_MATRICE;
         server.send(200, "text/html", "<html><head><meta http-equiv='refresh' content='2;url=/' /></head><body><p>Texte et couleur mis à jour ! Retour à l'accueil...</p></body></html>");
     } else {
@@ -216,21 +236,13 @@ void handleUpdate() {
     }
 }
 
-
-
-// Fonction pour convertir le nom de couleur en RGB
-uint16_t getColor(String color) {
-    if (color == "red") return matrix.Color(255, 0, 0);
-    if (color == "green") return matrix.Color(0, 255, 0);
-    if (color == "blue") return matrix.Color(0, 0, 255);
-    if (color == "yellow") return matrix.Color(255, 255, 0);
-    if (color == "cyan") return matrix.Color(0, 255, 255);
-    if (color == "magenta") return matrix.Color(255, 0, 255);
-    if (color == "white") return matrix.Color(255, 255, 255);
-    return matrix.Color(255, 255, 255); // Blanc par défaut
+void handleGetData() {
+    String json = "{\"text\":\"" + lastText + "\", \"color\":\"" + lastColor + "\"}";
+    server.send(200, "application/json", json);
 }
 
 
+// Decode le texte de la page web
 String urlDecode(String input) {
     String decoded = "";
     char temp[] = "00";
@@ -280,4 +292,20 @@ String normalizeText(String input) {
     input.replace("»", "\"");
     input.replace("Œ", "OE");
     return input;
+}
+
+
+
+
+
+// Fonction pour convertir le nom de couleur en RGB
+uint16_t getColor(String color) {
+    if (color == "red") return matrix.Color(255, 0, 0);
+    if (color == "green") return matrix.Color(0, 255, 0);
+    if (color == "blue") return matrix.Color(0, 0, 255);
+    if (color == "yellow") return matrix.Color(255, 255, 0);
+    if (color == "cyan") return matrix.Color(0, 255, 255);
+    if (color == "magenta") return matrix.Color(255, 0, 255);
+    if (color == "white") return matrix.Color(255, 255, 255);
+    return matrix.Color(255, 255, 255); // Blanc par défaut
 }
