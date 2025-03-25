@@ -135,35 +135,52 @@ String lastColor =  "white"; // Blanc par défaut
 
 void saveData() {
     File file = SPIFFS.open("/data.txt", "w");
-    if (file) {
-        file.println(lastText);
-        file.println(lastColor);
-        file.close();
+    if (!file) {
+        Serial.println("Erreur lors de l'ouverture du fichier pour écriture !");
+        return;
     }
+    file.println(lastText);
+    file.println(lastColor);
+    file.close();
+    Serial.println("Données sauvegardées !");
 }
 
+
 void loadData() {
-    if (SPIFFS.exists("/data.txt")) {
-        File file = SPIFFS.open("/data.txt", "r");
-        if (file) {
-            lastText = file.readStringUntil('\n');
-            lastText.trim();
-            lastColor = file.readStringUntil('\n');
-            lastColor.trim();
-            file.close();
-        }
+    if (!SPIFFS.exists("/data.txt")) {
+        Serial.println("Aucune donnée sauvegardée, valeurs par défaut utilisées.");
+        return;
     }
+
+    File file = SPIFFS.open("/data.txt", "r");
+    if (!file) {
+        Serial.println("Erreur lors de l'ouverture du fichier pour lecture !");
+        return;
+    }
+
+    lastText = file.readStringUntil('\n');
+    lastText.trim();
+    lastColor = file.readStringUntil('\n');
+    lastColor.trim();
+    file.close();
+
+    Serial.println("Données chargées :");
+    Serial.print("Texte   : ");
+    Serial.println(lastText);
+    Serial.print("Couleur : ");
+    Serial.println(lastColor);
 }
+
 
 
 void setup(){  
   Serial.begin(9600);
-  delay(1000);
   Serial.println("Démarrage ESP8266....");
   
   SPIFFS.begin();  // Initialiser SPIFFS
   loadData();      // Charger les valeurs enregistrées
-  Serial.println("Chargement des valeurs par défaut");
+  
+  delay(500);
   matrix.begin();
   Serial.println("Initialisation de la matrice");
   matrix.setTextWrap(false);
@@ -227,12 +244,16 @@ void handleRoot() {
 void handleUpdate() {
     if (server.hasArg("text") && server.hasArg("color")) {
         lastText = normalizeText(urlDecode(server.arg("text")));  // Conversion avant affichage avec suppression des accents
+        Serial.print("Nouveau texte   : ");
         Serial.println(lastText);
         lastColor = server.arg("color");
+        Serial.print("Couleur choisie : ");
+        Serial.println(lastColor);
         textX = LARGEUR_MATRICE;
-        server.send(200, "text/html", "<html><head><meta http-equiv='refresh' content='2;url=/' /></head><body><p>Texte et couleur mis à jour ! Retour à l'accueil...</p></body></html>");
+        saveData(); // Sauvegarde SPIFFS
+        server.send(200, "text/plain", "OK");
     } else {
-        server.send(400, "text/plain", "Erreur : paramètres manquants.");
+      server.send(500, "text/plain", "KO");
     }
 }
 
