@@ -46,8 +46,8 @@
 #define LARGEUR_MATRICE 64    // Nombre de pixel en largeur. On laisse 64 sur ce modèle (2 matrices de 32 pixels)
 
 // Identifiant pour le HotSpot Wifi
-const char* ssid = "BelEcran";
-const char* password = "12345678";
+const char* ssid = "BelEcran_ESP";
+const char* password = "belecran$";
 
 // Création du serveur sur le port 80
 ESP8266WebServer server(80);
@@ -68,70 +68,126 @@ Adafruit_NeoMatrix matrix = Adafruit_NeoMatrix(LARGEUR_MATRICE,HAUTEUR_MATRICE,P
   NEO_GRB + NEO_KHZ800);
 
 
-const char index_html[] PROGMEM = R"rawliteral(
+const char MAIN_page[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bel écran</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-        input, select, button { padding: 10px; font-size: 16px; margin: 5px; }
-        .container { max-width: 400px; margin: auto; display: flex; flex-direction: column; gap: 10px; }
-    </style>
-</head>
+    <title>ESP8266 LED Matrix</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      background-color: #f4f4f4;
+    }
+    .container {
+      max-width: 400px;
+      margin: auto;
+      padding: 20px;
+      background: white;
+      box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+      border-radius: 10px;
+    }
+    label {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 18px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    select {
+      width: 100%;
+      padding: 12px;
+      font-size: 18px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: white;
+    }
+    input[type="range"] {
+      width: 100%;
+      height: 40px;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      font-size: 20px;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 15px;
+    }
+    button:hover {
+      background: #218838;
+    }
+  </style>
+  </head>
 <body>
-
-    <h2>Contrôle de la Matrice LED</h2>
+    
     <div class="container">
-        <input type="text" id="textInput" placeholder="Entrez votre texte">
-        <select id="colorSelect">
-            <option value="white">Blanc</option>
-            <option value="red">Rouge</option>
-            <option value="green">Vert</option>
-            <option value="blue">Bleu</option>
-            <option value="yellow">Jaune</option>
-            <option value="cyan">Cyan</option>
-            <option value="magenta">Magenta</option>
-        </select>
-        <button onclick="sendText()">Envoyer</button>
+        
+        <h2>Contrôle de la Matrice LED</h2>
+        <form action="/update" method="POST">
+            <label>Texte :</label>
+            <input type="text" id="message" value="%TEXT%" maxlength="500">
+            
+            <label>Couleur :</label>
+            <select id="color">
+                <option value="RED" %RED% >Rouge</option>
+                <option value="GREEN" %GREEN% >Vert</option>
+                <option value="BLUE" %BLUE% >Bleu</option>
+                <option value="WHITE" %WHITE% >Blanc</option>
+                <option value="YELLOW" %YELLOW% >Jaune</option>
+                <option value="CYAN" %CYAN% >Cyan</option>
+                <option value="MAGENTA" %MAGENTA% >Magenta</option>
+            </select>
+            
+            <label>Vitesse :</label>
+            <input type="range" id="speed" min="1" max="5" value="%SPEED%">
+            <p id="speedValue">Vitesse : %SPEED%</p>
+        </form>
+        <button onclick="sendData()">Envoyer</button>
     </div>
-
     <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            fetch("/getData")
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById("textInput").value = data.text;
-                    document.getElementById("colorSelect").value = data.color;
-                });
-        });
+        document.getElementById("color").value = "%COLOR%";
+        document.getElementById("speed").oninput = function() {
+            document.getElementById("speedValue").innerText = "Vitesse : " + this.value;
+        };
 
-        function sendText() {
-            let text = document.getElementById("textInput").value;
-            let color = document.getElementById("colorSelect").value;
-            fetch(`/update?text=${encodeURIComponent(text)}&color=${encodeURIComponent(color)}`)
-                .then(response => {
-                    if (response.ok) {
-                        alert("Texte mis à jour !");
-                    }
-                });
+        function sendData() {
+            let msg = document.getElementById("message").value;
+            let color = document.getElementById("color").value;
+            let speed = document.getElementById("speed").value;
+            
+            let xhr = new XMLHttpRequest();
+            xhr.open("GET", "/update?text=" + encodeURIComponent(msg) + "&color=" + color + "&speed=" + speed, true);
+            xhr.send();
         }
     </script>
-
 </body>
 </html>
 )rawliteral";
 
 
+
 unsigned long lastUpdate = 0;
-const int scrollSpeed = 100;  // Temps en millisecondes entre chaque déplacement
+int scrollSpeed = 100;  // Temps en millisecondes entre chaque déplacement
 int textX = LARGEUR_MATRICE;
 // uint16_t textColor = matrix.Color(255, 0, 0);  // Rouge par défaut
 
-String lastText = "bienvenue";   // Texte par défaut
-String lastColor =  "white"; // Blanc par défaut
+String lastText = "bienvenue";    // Texte par défaut
+String lastColor =  "white";      // Blanc par défaut
+int lastSpeed = 3;                // Par défaut, vitesse moyenne (1 = lent, 5 = rapide)
 
 void saveData() {
     File file = SPIFFS.open("/data.txt", "w");
@@ -141,6 +197,7 @@ void saveData() {
     }
     file.println(lastText);
     file.println(lastColor);
+    file.println(lastSpeed);
     file.close();
     Serial.println("Données sauvegardées !");
 }
@@ -162,6 +219,9 @@ void loadData() {
     lastText.trim();
     lastColor = file.readStringUntil('\n');
     lastColor.trim();
+    lastSpeed = file.readStringUntil('\n').toInt();
+    if (lastSpeed < 1 || lastSpeed > 5) lastSpeed = 3; // Sécurité pour éviter des valeurs invalides
+
     file.close();
 
     Serial.println("Données chargées :");
@@ -174,6 +234,10 @@ void loadData() {
 
 
 void setup(){  
+  // Ne fait plus clignoter la led de la carte
+  pinMode(LED_BUILTIN, OUTPUT);  // Définir la LED en sortie
+  digitalWrite(LED_BUILTIN, HIGH);  // Éteindre la LED (car active en LOW)
+
   Serial.begin(9600);
   Serial.println("Démarrage ESP8266....");
   
@@ -217,6 +281,8 @@ void setup(){
 void loop() {
   server.handleClient();
 
+  scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+
   if (millis() - lastUpdate > scrollSpeed) {
     lastUpdate = millis();
     //Scrolling text startes here
@@ -238,7 +304,18 @@ void loop() {
 
 // Evenements du WS et de la page WEB
 void handleRoot() {
-    server.send(200, "text/html", index_html);
+    String html = String(MAIN_page);
+    html.replace("%TEXT%", lastText);
+    html.replace("%RED%", lastColor == "RED" ? "selected" : "");
+    html.replace("%GREEN%", lastColor == "GREEN" ? "selected" : "");
+    html.replace("%BLUE%", lastColor == "BLUE" ? "selected" : "");
+    html.replace("%YELLOW%", lastColor == "YELLOW" ? "selected" : "");
+    html.replace("%WHITE%", lastColor == "WHITE" ? "selected" : "");
+    html.replace("%CYAN%", lastColor == "CYAN" ? "selected" : "");
+    html.replace("%MAGENTA%", lastColor == "MAGENTA" ? "selected" : "");
+    html.replace("%COLOR%", lastColor);
+    html.replace("%SPEED%", String(lastSpeed));
+    server.send(200, "text/html", html);
 }
 
 void handleUpdate() {
@@ -249,6 +326,9 @@ void handleUpdate() {
         lastColor = server.arg("color");
         Serial.print("Couleur choisie : ");
         Serial.println(lastColor);
+        lastSpeed = server.arg("speed").toInt();
+        Serial.print("Vitesse choisie : ");
+        Serial.println(lastSpeed);
         textX = LARGEUR_MATRICE;
         saveData(); // Sauvegarde SPIFFS
         server.send(200, "text/plain", "OK");
@@ -258,7 +338,7 @@ void handleUpdate() {
 }
 
 void handleGetData() {
-    String json = "{\"text\":\"" + lastText + "\", \"color\":\"" + lastColor + "\"}";
+    String json = "{\"text\":\"" + lastText + "\", \"color\":\"" + lastColor + "\", \"speed\":\"" + lastSpeed + "\"}";
     server.send(200, "application/json", json);
 }
 
@@ -321,12 +401,12 @@ String normalizeText(String input) {
 
 // Fonction pour convertir le nom de couleur en RGB
 uint16_t getColor(String color) {
-    if (color == "red") return matrix.Color(255, 0, 0);
-    if (color == "green") return matrix.Color(0, 255, 0);
-    if (color == "blue") return matrix.Color(0, 0, 255);
-    if (color == "yellow") return matrix.Color(255, 255, 0);
-    if (color == "cyan") return matrix.Color(0, 255, 255);
-    if (color == "magenta") return matrix.Color(255, 0, 255);
-    if (color == "white") return matrix.Color(255, 255, 255);
+    if (color == "RED") return matrix.Color(255, 0, 0);
+    if (color == "GREEN") return matrix.Color(0, 255, 0);
+    if (color == "BLUE") return matrix.Color(0, 0, 255);
+    if (color == "YELLOW") return matrix.Color(255, 255, 0);
+    if (color == "CYAN") return matrix.Color(0, 255, 255);
+    if (color == "MAGENTA") return matrix.Color(255, 0, 255);
+    if (color == "WHITE") return matrix.Color(255, 255, 255);
     return matrix.Color(255, 255, 255); // Blanc par défaut
 }
