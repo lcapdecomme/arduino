@@ -155,6 +155,13 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
             <label>Vitesse :</label>
             <input type="range" id="speed" min="1" max="5" value="%SPEED%">
             <p id="speedValue">Vitesse : %SPEED%</p>
+            
+            <label>Mode :</label>
+            <select id="mode">
+                <option value="Fixe" %FIXE% >Fixe</option>
+                <option value="Defilant" %DEFILANT% >Defilant</option>
+            </select>
+            
         </form>
         <button onclick="sendData()">Envoyer</button>
     </div>
@@ -168,9 +175,10 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
             let msg = document.getElementById("message").value;
             let color = document.getElementById("color").value;
             let speed = document.getElementById("speed").value;
+            let modet = document.getElementById("mode").value;
             
             let xhr = new XMLHttpRequest();
-            xhr.open("GET", "/update?text=" + encodeURIComponent(msg) + "&color=" + color + "&speed=" + speed, true);
+            xhr.open("GET", "/update?text=" + encodeURIComponent(msg) + "&color=" + color + "&speed=" + speed + "&mode=" + modet, true);
             xhr.send();
         }
     </script>
@@ -188,6 +196,7 @@ int textX = LARGEUR_MATRICE;
 String lastText = "bienvenue";    // Texte par défaut
 String lastColor =  "white";      // Blanc par défaut
 int lastSpeed = 3;                // Par défaut, vitesse moyenne (1 = lent, 5 = rapide)
+String lastMode =  "defilant";    // Blanc par défaut
 
 void saveData() {
     File file = SPIFFS.open("/data.txt", "w");
@@ -198,6 +207,7 @@ void saveData() {
     file.println(lastText);
     file.println(lastColor);
     file.println(lastSpeed);
+    file.println(lastMode);
     file.close();
     Serial.println("Données sauvegardées !");
 }
@@ -221,6 +231,8 @@ void loadData() {
     lastColor.trim();
     lastSpeed = file.readStringUntil('\n').toInt();
     if (lastSpeed < 1 || lastSpeed > 5) lastSpeed = 3; // Sécurité pour éviter des valeurs invalides
+    lastMode = file.readStringUntil('\n');
+    lastMode.trim();
 
     file.close();
 
@@ -229,6 +241,8 @@ void loadData() {
     Serial.println(lastText);
     Serial.print("Couleur : ");
     Serial.println(lastColor);
+    Serial.print("Mode : ");
+    Serial.println(lastMode);
 }
 
 
@@ -281,23 +295,34 @@ void setup(){
 void loop() {
   server.handleClient();
 
-  scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
-
-  if (millis() - lastUpdate > scrollSpeed) {
-    lastUpdate = millis();
-    //Scrolling text startes here
-    matrix.fillScreen(0);
-    //matrix.setCursor(textX, HAUTEUR_MATRICE-1);
-    matrix.setCursor(textX, 0);
-    matrix.setTextColor(getColor(lastColor));
-    matrix.print(lastText);
-       
-    textX--;
-    if (textX < -((int)lastText.length() * 6)) {
-        textX = LARGEUR_MATRICE;
-    }
-
-    matrix.show();
+  if (lastMode == "Fixe") 
+  {  
+        matrix.fillScreen(0);
+        //matrix.setCursor(textX, HAUTEUR_MATRICE-1);
+        matrix.setCursor(textX, 0);
+        matrix.setTextColor(getColor(lastColor));
+        matrix.print(lastText);
+        matrix.show();
+  }
+  
+  if (lastMode == "Defilant") 
+  {  
+      scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+      if (millis() - lastUpdate > scrollSpeed) {
+        lastUpdate = millis();
+        //Scrolling text startes here
+        matrix.fillScreen(0);
+        //matrix.setCursor(textX, HAUTEUR_MATRICE-1);
+        matrix.setCursor(textX, 0);
+        matrix.setTextColor(getColor(lastColor));
+        matrix.print(lastText);
+           
+        textX--;
+        if (textX < -((int)lastText.length() * 6)) {
+            textX = LARGEUR_MATRICE;
+        }
+        matrix.show();
+      }
   }
 }
 
@@ -315,11 +340,13 @@ void handleRoot() {
     html.replace("%MAGENTA%", lastColor == "MAGENTA" ? "selected" : "");
     html.replace("%COLOR%", lastColor);
     html.replace("%SPEED%", String(lastSpeed));
+    html.replace("%FIXE%", lastMode == "Fixe" ? "selected" : "");
+    html.replace("%DEFILANT%", lastColor == "Defilant" ? "selected" : "");
     server.send(200, "text/html", html);
 }
 
 void handleUpdate() {
-    if (server.hasArg("text") && server.hasArg("color")) {
+    if (server.hasArg("text") && server.hasArg("color") && server.hasArg("mode")) {
         lastText = normalizeText(urlDecode(server.arg("text")));  // Conversion avant affichage avec suppression des accents
         Serial.print("Nouveau texte   : ");
         Serial.println(lastText);
@@ -329,6 +356,9 @@ void handleUpdate() {
         lastSpeed = server.arg("speed").toInt();
         Serial.print("Vitesse choisie : ");
         Serial.println(lastSpeed);
+        lastMode = server.arg("mode");
+        Serial.print("Mode choisi : ");
+        Serial.println(lastMode);
         textX = LARGEUR_MATRICE;
         saveData(); // Sauvegarde SPIFFS
         server.send(200, "text/plain", "OK");
@@ -337,8 +367,9 @@ void handleUpdate() {
     }
 }
 
+// Plus utilisé
 void handleGetData() {
-    String json = "{\"text\":\"" + lastText + "\", \"color\":\"" + lastColor + "\", \"speed\":\"" + lastSpeed + "\"}";
+    String json = "{\"text\":\"" + lastText + "\", \"color\":\"" + lastColor + "\", \"speed\":\"" + lastSpeed + "\", \"mode\":\"" + lastMode + "\"}";
     server.send(200, "application/json", json);
 }
 
