@@ -6,8 +6,10 @@
 
 // Branchement sur un ESP8266
 // Fil rouge Matrice => 3.3v en bas à droite
-// Fil Vert Data Matrice => Attention ! on utilise TXD1 (c'est-à-dire D4) car TXD0 bug 
 // Fil Blanc masse Matrice => GND en bas à droite
+// Matrice 1 => TXD0 
+// Matrice 2 => RXD0 
+// Matrice 3 => TXD1 
 
 // Branchement sur un ESP32 
 // Fil rouge Matrice => vim en haut à droite
@@ -65,7 +67,7 @@
 
 
 // Identifiant pour le HotSpot Wifi
-const char* ssid = "BelEcran_ESP";
+const char* ssid = "BelEcran_ESP123";
 const char* password = "belecran$";
 
 // Création du serveur sur le port 80
@@ -172,7 +174,7 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
     
     <div class="container">
         
-        <h2>Contrôle de la Matrice LED</h2>
+        <h2>Contrôle des 3 Matrices LED</h2>
         <form action="/update" method="POST">
             <label>Texte 1 :</label>
             <input type="text" id="message1" value="%TEXT1%" maxlength="500">
@@ -194,6 +196,7 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
                 <option value="Defilant" %DEFILANT1% >Defilant</option>
             </select>
             
+            <br>
             <br>
             <hr>
             <br>
@@ -219,6 +222,7 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
             </select>
 
             <br>
+            <br>
             <hr>
             <br>
 
@@ -242,6 +246,7 @@ const char MAIN_page[] PROGMEM = R"rawliteral(
                 <option value="Defilant" %DEFILANT3% >Defilant</option>
             </select>
 
+            <br>
             <br>
             <hr>
             <br>
@@ -462,7 +467,7 @@ void loop() {
   server.handleClient();
 
   // Matrice 1, 2 et 3
-  scrollSpeed = map(lastSpeed, 1, 5, 500, 20); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
   if (millis() - lastUpdate > scrollSpeed) {
       lastUpdate = millis();
       matrix1.fillScreen(0);
