@@ -67,7 +67,7 @@
 
 
 // Identifiant pour le HotSpot Wifi
-const char* ssid = "BelEcran_ESP123";
+const char* ssid = "BelEcran";
 const char* password = "belecran$";
 
 // Création du serveur sur le port 80
@@ -465,9 +465,20 @@ void setup(){
 
 void loop() {
   server.handleClient();
-
   // Matrice 1, 2 et 3
-  scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  int nb=Nbdefilant(lastMode1, lastMode2, lastMode3);
+  if (nb == 0 ) {
+      scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  }
+  if (nb == 1 ) {
+      scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  }
+  if (nb == 2) {
+      scrollSpeed = map(lastSpeed, 1, 5, 300, 150); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  }
+  if (nb == 3) {
+      scrollSpeed = map(lastSpeed, 1, 5, 400, 200); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  } 
   if (millis() - lastUpdate > scrollSpeed) {
       lastUpdate = millis();
       matrix1.fillScreen(0);
@@ -542,6 +553,20 @@ void loop() {
   
 }
 
+int Nbdefilant(String lastMode1, String lastMode2, String lastMode3) {
+   int nb=0;
+   if (lastMode1 == "Defilant") {
+      nb=nb+1;
+   }
+   if (lastMode2 == "Defilant") {
+      nb=nb+1;
+   }
+   if (lastMode3 == "Defilant") {
+      nb=nb+1;
+   }
+   return nb;
+}
+
 
 // Evenements du WS et de la page WEB
 void handleRoot() {
@@ -569,7 +594,7 @@ void handleRoot() {
     html.replace("%MAGENTA2%", lastColor2 == "MAGENTA" ? "selected" : "");
     html.replace("%COLOR2%", lastColor2);
     html.replace("%FIXE2%", lastMode2 == "Fixe" ? "selected" : "");
-    html.replace("%DEFILANT%", lastMode2 == "Defilant" ? "selected" : "");
+    html.replace("%DEFILANT2%", lastMode2 == "Defilant" ? "selected" : "");
     
     html.replace("%TEXT3%", lastText3);
     html.replace("%RED3%", lastColor3 == "RED" ? "selected" : "");
