@@ -55,7 +55,7 @@
 #define PIN_MATRICE2 2         // Si ESP32, mettre obligatoirement la valeur 2 et brancher la data sur la PIN TX2 !!
 #define PIN_MATRICE3 3         // Si ESP32, mettre obligatoirement la valeur 3 et brancher la data sur la PIN TX3 !!
                               // Si ESP8266, mettre obligatoirement la valeur 2 et brancher la data sur la PIN TXD1 soit GPI02 (D4) !!
-#define LUMINOSITE 50         // Luminosité de l'affichage sachant que cela varie de 0 à 255
+#define LUMINOSITE 150         // Luminosité de l'affichage sachant que cela varie de 0 à 255
 // Ces valeurs doivent correspondre précisement à la taille des matrices 
 #define HAUTEUR_MATRICE 8     // Nombre de pixel en hauteur. On laisse 8 sur ce modèle
 #define LARGEUR_MATRICE 32   // Nombre de pixel en largeur. On laisse 64 sur ce modèle (2 matrices de 32 pixels)
@@ -467,17 +467,17 @@ void loop() {
   server.handleClient();
   // Matrice 1, 2 et 3
   int nb=Nbdefilant(lastMode1, lastMode2, lastMode3);
-  if (nb == 0 ) {
-      scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  if (nb == 0) {
+      scrollSpeed = map(lastSpeed, 1, 5, 300, 100); // Ajuste la vitesse (1 = lent, 5 = rapide)
   }
-  if (nb == 1 ) {
-      scrollSpeed = map(lastSpeed, 1, 5, 200, 50); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  if (nb == 1) {
+      scrollSpeed = map(lastSpeed, 1, 5, 300, 100); // Ajuste la vitesse (1 = lent, 5 = rapide)
   }
   if (nb == 2) {
-      scrollSpeed = map(lastSpeed, 1, 5, 300, 150); // Ajuste la vitesse (1 = lent, 5 = rapide)
+      scrollSpeed = map(lastSpeed, 1, 5, 500, 300); // Ajuste la vitesse (1 = lent, 5 = rapide)
   }
-  if (nb == 3) {
-      scrollSpeed = map(lastSpeed, 1, 5, 400, 200); // Ajuste la vitesse (1 = lent, 5 = rapide)
+  if (nb >= 3) {
+      scrollSpeed = map(lastSpeed, 1, 5, 600, 400); // Ajuste la vitesse (1 = lent, 5 = rapide)
   } 
   if (millis() - lastUpdate > scrollSpeed) {
       lastUpdate = millis();

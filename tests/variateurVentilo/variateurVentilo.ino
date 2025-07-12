@@ -1,24 +1,24 @@
-// Première version du variateur de ventilo
+// Première version du variateur de ventilo pour  rduino nano
 
-#define mosfet 3        // module MOSFET en pin 3 (Sortie digital en PWM : Important ! )
+#define mosfet 15        // module MOSFET en pin 3 (Sortie digital en PWM : Important ! )
 #define MAX 50          // Vitesse du variateur
 
 void setup()
 {
   // déclaration des différents capteurs en entrée ou en sortie
   pinMode(mosfet, OUTPUT);       // module MOSFET déclaré en sortie
-  //Serial.begin(9600);
+  Serial.begin(9600);
   analogWrite(mosfet, MAX);
 }
 
 void loop()
 {
-  /* digitalWrite(mosfet, HIGH);    // Activer le module MOSFET
+  digitalWrite(mosfet, HIGH);    // Activer le module MOSFET
   Serial.println("a fond ?");
-  delay (10000);                  // Attendre 3 secondes
+  delay (1000);                  // Attendre 3 secondes
   digitalWrite(mosfet, LOW);     // désactiver le MOSFET
   Serial.println("stop! ");
-  delay (10000); */                  
+  delay (1000);                  
   /* démarrage progressif
   for(int i=0; i<=MAX; i++) {
   analogWrite(mosfet, i);
@@ -31,7 +31,5 @@ void loop()
     Serial.println(i);
   delay(100);
    }
-
-   */
-  
+  */
 }
