@@ -52,6 +52,7 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 #define PWM_CHANNEL 0
 #define PWM_FREQ 25000
 #define PWM_RESOLUTION 8
+#define EEPROM_SIZE 10
 
 bool fanOn = false;
 int fanSpeed = 5;
@@ -63,137 +64,54 @@ const char* password = "";
 // Création du serveur sur le port 80
 ESP8266WebServer server(80);
 
-
 void handleRoot() {
-  String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Ventilateur ESP32</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 2em; }
-    label {
-      font-size: 1.2em;
-      margin: 0.5em; 
-    }
-    .btn {
-      padding: 1em 2em;
-      font-size: 1em;
-      margin: 0.5em 0.5em 1.5em 0.5em; 
-      border: none;
-      border-radius: 10px;
-      color: white;
-    }
-    .on  { background-color: green; }
-    .off { background-color: red; }
-.slider {
-  -webkit-appearance: none;
-  width: 80%;
-  max-width: 400px;
-  height: 30px;
-  background: #ddd;
-  border-radius: 10px;
-  outline: none;
-  transition: background 0.3s;
-  margin-top: 1em;
-}
-.slider:hover {
-  background: #ccc;
-}
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 30px;
-  height: 30px;
-  background: #007bff;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 0 5px rgba(0,0,0,0.3);
-  transition: background 0.3s;
-}
-.slider::-webkit-slider-thumb:hover {
-  background: #0056b3;
-}
-.slider::-moz-range-thumb {
-  width: 30px;
-  height: 30px;
-  background: #007bff;
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 0 5px rgba(0,0,0,0.3);
-  transition: background 0.3s;
-}
-    #status { 
-      font-size: 1.4em;
-  margin: 0.5em; 
-  }
-  img {
-    margin-top: 2em;
-  }
-  </style>
-</head>
-<body>
-  <h1>Contrôle du Ventilateur</h1>
-  <div id="status">État : <span id="etat">...</span></div>
-  <button id="btn" class="btn off" onclick="toggleFan()">ON / OFF</button><br>
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Ventilateur ESP8266</title><style>";
+  html += "body { font-family: sans-serif; text-align: center; margin-top: 2em; }";
+  html += ".btn { padding: 1em 2em; font-size: 1em; margin: 0.5em; border: none; border-radius: 10px; color: white; }";
+  html += ".on  { background-color: green; }";
+  html += ".off { background-color: red; }";
+  html += ".slider { -webkit-appearance: none; width: 80%; max-width: 400px; height: 30px; background: #ddd; border-radius: 10px; outline: none; margin-top: 1em; }";
+  html += ".slider::-webkit-slider-thumb { width: 30px; height: 30px; background: #007bff; border-radius: 50%; cursor: pointer; }";
+  html += "#status { font-size: 1.4em; margin: 0.5em; }";
+  html += "img { margin-top: 2em; }</style></head><body>";
 
-  <label for="speed">Vitesse : <span id="val">5</span></label><br>
-  <input class="slider" type="range" min="1" max="10" value="5" id="speed"
-         oninput="updateSpeed(this.value)" onchange="sendSpeed(this.value)">
+  html += "<h1>Contrôle du Ventilateur</h1>";
+  html += "<div id='status'>État : <span id='etat'>" + String(fanOn ? "Activé" : "Désactivé") + "</span></div>";
+  html += "<button id='btn' class='btn " + String(fanOn ? "on" : "off") + "' onclick='toggleFan()'>ON / OFF</button><br>";
 
-<img src="https://i.imgur.com/YpwMGMZ.png" alt="logo">
+  html += "<label for='speed'>Vitesse : <span id='val'>" + String(fanSpeed) + "</span></label><br>";
+  html += "<input class='slider' type='range' min='1' max='10' value='" + String(fanSpeed) + "' id='speed' oninput='updateSpeed(this.value)' onchange='sendSpeed(this.value)'>";
 
-  <script>
-    function toggleFan() {
-      fetch('/toggle').then(updateState);
-    }
-
-    function updateSpeed(val) {
-      document.getElementById('val').innerText = val;
-    }
-
-    function sendSpeed(val) {
-      fetch('/speed?val=' + val).then(updateState);
-    }
-
-    function updateState() {
-      fetch('/state')
-        .then(r => r.text())
-        .then(state => {
-          let btn = document.getElementById('btn');
-          let etat = document.getElementById('etat');
-          if (state === "on") {
-            btn.className = "btn on";
-            etat.innerText = "Activé";
-          } else {
-            btn.className = "btn off";
-            etat.innerText = "Désactivé";
-          }
-        });
-    }
-
-    // Mise à jour initiale
-    updateState();
-  </script>
-</body>
-</html>
-  )rawliteral";
+  html += "<img src='https://i.imgur.com/YpwMGMZ.png' alt='logo'>";
+  html += "<script>";
+  html += "function toggleFan() { fetch('/toggle').then(updateState); }";
+  html += "function updateSpeed(val) { document.getElementById('val').innerText = val; }";
+  html += "function sendSpeed(val) { fetch('/speed?val=' + val).then(updateState); }";
+  html += "function updateState() { fetch('/state').then(r => r.text()).then(state => {";
+  html += "let btn = document.getElementById('btn'); let etat = document.getElementById('etat');";
+  html += "if (state === 'on') { btn.className = 'btn on'; etat.innerText = 'Activé'; } else { btn.className = 'btn off'; etat.innerText = 'Désactivé'; }";
+  html += "}); }";
+  html += "updateState();</script></body></html>";
 
   server.send(200, "text/html", html);
 }
+
 
 void saveSettings() {
   EEPROM.write(0, fanOn ? 1 : 0);
   EEPROM.write(1, fanSpeed);
   EEPROM.commit();
+      Serial.print("Sauve vitesse : ");
+    Serial.println(fanSpeed);
 }
 
 void loadSettings() {
   fanOn = EEPROM.read(0) == 1;
   fanSpeed = EEPROM.read(1);
   if (fanSpeed < 1 || fanSpeed > 10) fanSpeed = 5;
+      
+    Serial.print("Charge vitesse : ");
+    Serial.println(fanSpeed);
 }
 
 void setFanSpeed() {
@@ -239,7 +157,10 @@ void handleState() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
+  // Initialisation de l'EEPROM
+  EEPROM.begin(EEPROM_SIZE);
+  
   pinMode(FAN_PIN, OUTPUT);
   analogWrite(FAN_PIN, 255);  // Pleine puissance à la mise sous tension
 //  analogWrite(FAN_PIN, 0);  // Ventilo OFF au démarrage
