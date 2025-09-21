@@ -19,7 +19,7 @@ S = Source
 + alim 12V ------> fil rouge ( + ) ventilateur
 fil noir ( - ) ventilateur --> DRAIN du IRF3708
 SOURCE du IRF3708 ---------> GND(-) alim 12V + GND Arduino Nano/ESP32/ESP8266 (masse commune)
-GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11)
+GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11 pour ESP32 MAIS  TX pour ESP8266)
                     |
                     +--[10kΩ]--> GND (pull-down)
 
@@ -49,9 +49,6 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 
 #define FAN_PIN 1
-#define PWM_CHANNEL 0
-#define PWM_FREQ 25000
-#define PWM_RESOLUTION 8
 #define EEPROM_SIZE 10
 
 bool fanOn = false;
@@ -63,6 +60,13 @@ const char* password = "";
 
 // Création du serveur sur le port 80
 ESP8266WebServer server(80);
+
+void handleNotFound() {
+  // Redirige toutes les requêtes vers la page d'accueil
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "");
+}
+
 
 void handleRoot() {
   String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Ventilateur ESP8266</title><style>";
@@ -101,23 +105,21 @@ void saveSettings() {
   EEPROM.write(0, fanOn ? 1 : 0);
   EEPROM.write(1, fanSpeed);
   EEPROM.commit();
-      Serial.print("Sauve vitesse : ");
-    Serial.println(fanSpeed);
+  Serial.print("Sauve vitesse : ");
+  Serial.println(fanSpeed);
 }
 
 void loadSettings() {
   fanOn = EEPROM.read(0) == 1;
   fanSpeed = EEPROM.read(1);
   if (fanSpeed < 1 || fanSpeed > 10) fanSpeed = 5;
-      
-    Serial.print("Charge vitesse : ");
-    Serial.println(fanSpeed);
+  Serial.print("Charge vitesse : ");
+  Serial.println(fanSpeed);
 }
 
 void setFanSpeed() {
   if (fanOn) {
     int pwm = map(fanSpeed, 1, 10, 25, 255);  // vitesse douce à max
-    
     Serial.print("Change vitesse : ");
     Serial.println(pwm);
     analogWrite(FAN_PIN, pwm);
@@ -160,7 +162,7 @@ void setup() {
   Serial.begin(9600);
   // Initialisation de l'EEPROM
   EEPROM.begin(EEPROM_SIZE);
-  
+    
   pinMode(FAN_PIN, OUTPUT);
   analogWrite(FAN_PIN, 255);  // Pleine puissance à la mise sous tension
 //  analogWrite(FAN_PIN, 0);  // Ventilo OFF au démarrage
@@ -172,6 +174,10 @@ void setup() {
   Serial.print("AP IP address: ");
   IPAddress IP = WiFi.softAPIP();
   Serial.println(IP);
+
+  // Démarrage du DNS captif
+  server.onNotFound(handleNotFound);
+
   
   loadSettings();
   setFanSpeed();
