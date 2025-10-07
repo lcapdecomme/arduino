@@ -1,8 +1,22 @@
 /* Mosquito Maitre
- * Projet pour esp8266 avec un mosfet IRLZ24N
+ * Projet pour esp32 avec un mosfet IRLZ24N
 
 Relivraison :
-Attention, avec les images, il faut téléverser le projet puis les immages (Tools/ESP8266 LittleFS Data Upload)
+Sur ESP32, LittleFS n’est pas actif par défaut (c’est SPIFFS ou LittleFS.h spécifique ESP32 qui doit être inclus).
+1) Go to the releases page and click the latest esp32fs.zip file to download.
+2) Unzip the downloaded file. You should have a folder called esp32fs with a file called esp32fs.jar inside.
+3) Find your Sketchbook location. In your Arduino IDE, go to File > Preferences and check your Sketchbook location. 
+In my case, it’s in the following path: /home/Dell/Arduino.
+4) Go to the sketchbook location, and create a tools folder if you don’t have it already 
+(make sure that the Arduino IDE application is closed).
+5) Inside the tools folder, create another folder called ESP32FS if you haven’t already.
+6) Inside the ESP32FS folder, create a folder called tool.
+7) Copy the esp32fs.jar file to the tool folder
+8) Now, you can open Arduino IDE.
+To check if the plugin was successfully installed, open your Arduino IDE and select your ESP32 board. 
+In the Tools menu, check that you have the option “ESP32 Sketch Data Upload“. 
+Click on that option. A window will pop up for you to choose the filesystem you want to use.
+
 
 Fonctionnalité
  * Démarre un réseau Wifi Mosquito
@@ -18,55 +32,11 @@ Fonctionnement du programme maitre
       * affiche le nombre d'esclaves connectés et leur état
   - Gère l'enregistrement des esclaves (/register) et le polling (/poll)
 
+
 ATTENTION 1 : Installer la librairie ArduinoJson (par Benoît Blanchon).
-ATTENTION 2 : Installation des images ....
-
-Étape 1 — Installer l’outil de téléversement des fichiers (LittleFS Uploader)
-🔸 Si tu es sur Arduino IDE 1.x (1.8.x)
-
-Ferme l’IDE Arduino.
-
-Télécharge l’outil ici :https://github.com/earlephilhower/arduino-esp8266littlefs-plugin/releases
-👉 ESP8266 LittleFS Data Upload Tool (GitHub officiel)
-
-Télécharge le fichier .zip, par exemple :
-ESP8266LittleFS-3.0.0.zip
-
-Décompresse-le dans ton dossier Arduino Tools :
 
 
-Si tu es sur Arduino IDE 2.x
 
-L’outil n’est pas intégré dans le menu, mais il existe une extension CLI (en ligne de commande) facile à utiliser :
-
-Ouvre un terminal dans ton dossier de projet .ino
-
-Tape la commande suivante :arduino-cli upload -p /dev/ttyUSB0 --fqbn esp8266:esp8266:nodemcuv2
-
-(⚠️ adapte le port série et la carte à ton cas)
-
-Pour le système de fichiers LittleFS, utilise :
-python ~/.arduino15/packages/esp8266/tools/mklittlefs/3.0.0/x86_64-linux-gnu/mklittlefs.py -c data/ littlefs.bin
-
-puis téléverse le fichier avec esptool.py write_flash ...
-
-Si erreur : 
-
-lfs_write error(-28): File system is full. error adding file! LittleFS Create Failed!
-
-solution : 
-Étape 1 — Ouvre le menu “Outils” dans l’IDE Arduino
-
-Tu y verras une option comme :
-Flash Size: 4M (1M SPIFFS)
-
-ou
-Flash Size: 4MB (FS:64KB OTA:~1019KB)
-
-Change-la pour une version avec plus de FS (File System), par exemple :
-Flash Size: 4M (1M LittleFS)
-ou
-Flash Size: 4MB (1MB FS)
 
 Principe de branchement : 
 
@@ -92,6 +62,7 @@ GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11 pour
                     |
                     +--[10kΩ]--> GND (pull-down)
 
+
 | Broche (NodeMCU) | GPIO n° (à utiliser) |
 | ---------------- | -------------------- |
 | D0               | GPIO16               |
@@ -110,24 +81,30 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 
 */
 
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <WiFi.h>             // ✅ Remplacé par la librairie standard ESP32
+#include <WebServer.h>            // ✅ Remplacé par la librairie WebServer de l’ESP32
 #include <EEPROM.h>
 #include <DNSServer.h>
 #include <ArduinoJson.h>
-#include <LittleFS.h>           // Pour LittleFS
+#include <LittleFS.h>   // Sur ESP8266, LittleFS est spécifique
 
 
 #define AP_SSID "Mosquito"
-#define AP_MDP ""
+#define AP_PWD ""
 #define AP_CHANNEL 1
 
 // Pins (ajuste selon ton câblage)
 const int FAN_PIN = 1; // PWM pin vers gate du MOSFET
+
+//✅ ESP32 : définition manuelle de la LED intégrée si absente
+#ifndef LED_BUILTIN
+#define LED_BUILTIN 2   // la plupart des cartes ESP32 utilisent le GPIO 2 pour la LED intégrée
+#endif
 const int LED_PIN = LED_BUILTIN; // indicateur local (ESP intégré), active low on many boards
 //const int LED_PIN = 2; // indicateur local (ESP intégré), active low on many boards
 
-ESP8266WebServer server(80);
+// ESP8266WebServer server(80);   // Obsolète sur ESP32
+WebServer server(80);        // ✅ Remplacé par WebServer pour ESP32
 DNSServer dnsServer;
 const byte DNS_PORT = 53;
 
@@ -480,35 +457,47 @@ void handleNotFound() {
 
 void setupAP() {
   WiFi.softAPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
-  //WiFi.softAP(AP_SSID);
-  WiFi.softAP(AP_SSID, "", 1, false, 8); // max 8 stations
-
+  WiFi.softAP(AP_SSID);
   delay(500);
 
   // Démarrage du DNS captif
-  dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
+  // dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
   server.onNotFound(handleNotFound);
+
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   pinMode(FAN_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH); // LED off by default for builtin active-low
 
-  // Démarre l'espace de stockage interne
+
+  // --- LittleFS init (ESP32) ---
   LittleFS.begin();
 
+  // --- Start WiFi AP ---
+  Serial.println("Starting AP...");
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(AP_SSID, AP_PWD, 1, false);
+  // ne marche pas sur esp32 WiFi.softAPsetMaxConnections(8);
+
+  delay(200);
+
+
+  // Setup DNS to capture all domains (captive portal)
+  dnsServer.start(53, "*", WiFi.softAPIP());
+
+  
   // Charge les valeurs sauvegardés
   loadSettings();
   applyFanState();
-
-  setupAP();
   
   server.on("/", handleRoot);
   server.on("/command", HTTP_POST, handleCommand);
   server.on("/status", HTTP_GET, handleStatus);
   server.on("/register", HTTP_POST, handleRegister);
+
 
   // ✅ Permet de servir automatiquement tous les fichiers du dossier /data
   server.serveStatic("/", LittleFS, "/");

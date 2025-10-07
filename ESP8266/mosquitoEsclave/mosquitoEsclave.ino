@@ -5,8 +5,7 @@ Fonctionnement du programme esclave
 
   Esclave ESP8266:
    - Se connecte au réseau WiFi "Mosquito" (softAP du maître)
-   - S'enregistre auprès du maître (/register)
-   - Interroge périodiquement /poll pour recevoir nouvelles commandes
+   - S'enregistre auprès du maître (/register) pour recevoir nouvelles commandes
    - Applique l'état (power/speed) sur une sortie PWM
    - Indique l'état d'appairage via une LED
 
@@ -65,10 +64,12 @@ const char* MASTER_IP = "192.168.4.1"; // IP par défaut du softAP ESP8266
 const int MASTER_PORT = 80;
 
 const int FAN_PIN = 1; // PWM pin vers MOSFET
-const int LED_PIN = LED_BUILTIN; // indicateur d'appairage (builtin active-low)
+//const int LED_PIN = LED_BUILTIN; // indicateur d'appairage (builtin active-low)
+const int LED_PIN = 4; // LED sur D2 (GPIO04) !!!!! 
+ 
+const unsigned long CNX_INTERVAL = 15000UL; // intervalle de polling (ms)
+const unsigned long WIFI_TIMEOUT = 8000UL;  // timeout pour WiFi.begin (ms)
 
-unsigned long POLL_INTERVAL = 3000; // ms entre polls
-unsigned long REGISTER_RETRY_MS = 5000;
 
 String chipIdStr() {
   uint32_t id = ESP.getChipId();
@@ -77,22 +78,21 @@ String chipIdStr() {
   return String(buf);
 }
 
-bool paired = false;
-unsigned long lastPoll = 0;
-unsigned long lastRegisterAttempt = 0;
+unsigned long lastCnx = 0;
 unsigned long lastCommandId = 0;
 bool powerState = true;
 int speed = 3;
+bool paired = false;
 
 void setLedPairing() {
   // blinking to show pairing attempt
   digitalWrite(LED_PIN, millis() % 500 < 250 ? LOW : HIGH); // builtin often active-low
 }
 void setLedPaired() {
-  digitalWrite(LED_PIN, LOW); // on (active low)
+  digitalWrite(LED_PIN, HIGH); // on (active low)
 }
 void setLedUnpaired() {
-  digitalWrite(LED_PIN, HIGH); // off
+  digitalWrite(LED_PIN, LOW); // off Attention c'est l'inverse sur LED_BUILTIN !!
 }
 
 void applyFanState() {
@@ -101,9 +101,9 @@ void applyFanState() {
     duty = 0;
   } else {
     switch (speed) {
-      case 1: duty = 80; break; // vitesse basse
-      case 2: duty = 150; break; // vitesse moyenne
-      case 3: duty = 250; break; // vitesse haute
+      case 1: duty = 160; break; // vitesse basse
+      case 2: duty = 200; break; // vitesse moyenne
+      case 3: duty = 255; break; // vitesse haute
       default: duty = 150; break;
     }
   }
@@ -117,8 +117,21 @@ bool registerToMaster() {
   HTTPClient http;
   String url = String("http://") + MASTER_IP + "/register";
   WiFiClient client;
-  http.begin(client, url);
+
+  // commence la connexion
+  if (!http.begin(client, url)) {
+    http.end();
+    client.stop(); // assure la libération du socket
+    return false;
+  }
+  
+  // forcer la fermeture côté serveur pour éviter sockets KEEP-ALIVE
+  http.addHeader("Connection", "close");
+  // facultatif : user-agent ou autre header
+  http.setTimeout(5000); // ms
   http.addHeader("Content-Type", "application/json");
+
+  
   StaticJsonDocument<128> doc;
   doc["id"] = chipIdStr();
   String body;
@@ -133,115 +146,68 @@ bool registerToMaster() {
       powerState = resDoc["power"] | powerState;
       speed = resDoc["speed"] | speed;
       http.end();
+      client.stop(); // assure la libération du socket
       return true;
     }
   }
   http.end();
+  client.stop(); // assure la libération du socket
+
   return false;
 }
 
-bool pollMaster() {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  HTTPClient http;
-  String url = String("http://") + MASTER_IP + "/poll?id=" + chipIdStr() + "&last=" + String(lastCommandId);
-  WiFiClient client;
-  http.begin(client, url);
-  int code = http.GET();
-  if (code == 200) {
-    String resp = http.getString();
-    StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, resp) == DeserializationError::Ok) {
-      unsigned long cmd = doc["commandId"] | lastCommandId;
-      if (cmd > lastCommandId) {
-        lastCommandId = cmd;
-        powerState = doc["power"] | powerState;
-        speed = doc["speed"] | speed;
-        applyFanState();
-      }
-    }
-    http.end();
-    return true;
-  } else if (code == 204) {
-    // no new command
-    http.end();
-    return true;
-  } else {
-    http.end();
-    return false;
-  }
-}
-
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(38400);
   pinMode(FAN_PIN, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
-  setLedUnpaired();
 
   WiFi.mode(WIFI_STA);
-  WiFi.begin(MASTER_SSID, MASTER_PASS);
-  Serial.print("Connecting to ");
-  Serial.println(MASTER_SSID);
-  unsigned long start = millis();
-  // wait a few seconds for WiFi
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 7000) {
-    delay(200);
-    Serial.print(".");
-  }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConnected, IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\nImpossible de se connecter, retentative bientot");
-  }
-  // initial off
+  
+  // Led éteinte
+  setLedUnpaired();
+  // Ventilateur eteint
   applyFanState();
+  delay(1000);
+}
+
+
+bool connexionMaitre() {
+  // Connexion WiFi (STA) au softAP du maître
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(MASTER_SSID);
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT) {
+    delay(50);
+    // tu peux ajouter un petit yield/WDOG reset si nécessaire
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    // échec connexion
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    return false;
+  }
+  return true;
 }
 
 void loop() {
-  unsigned long now = millis();
 
-  // Si non connecté au wifi du maitre, on reessaye régulièrement
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.disconnect();
-    paired=false;
-    setLedUnpaired();
-    WiFi.begin(MASTER_SSID, MASTER_PASS);
-    delay(500);
-    setLedUnpaired();
-    // skip rest until connected
-    return;
-  }
+    // jitter aléatoire pour éviter que tous les esclaves se connectent en même temps
+    delay(random(0, 2000));
 
-  // Si pas appairé, essaye régulierement et affiche la led apparaiement
-  if (!paired) {
-    if (now - lastRegisterAttempt > REGISTER_RETRY_MS) {
-      lastRegisterAttempt = now;
-      setLedPairing();
-      if (registerToMaster()) {
-        paired = true;
-        setLedPaired();
-        applyFanState();
-      } else {
-        paired = false;
-        setLedUnpaired();
-      }
-    } else {
-      setLedPairing();
+    if (connexionMaitre())
+    {
+        setLedPairing();
+        // L'esclave essaye ensuite un enregistrement et demande l'état du ventilateur
+        registerToMaster();
+        applyFanState();   
+        
+        // bien fermer la connexion WiFi proprement
+        WiFi.disconnect(true);     // true = supprime les informations de connexion
+        WiFi.mode(WIFI_OFF);       // coupe interface pour libérer ressources
+        delay(100);                // petit délai pour laisser le hardware nettoyer
     }
-    return;
-  }
-
-  // Paired -> poll master periodically
-  if (now - lastPoll >= POLL_INTERVAL) {
-    lastPoll = now;
-    bool ok = pollMaster();
-    if (!ok) {
-      // lost connection or master unreachable -> mark unpaired and try to re-register
-      paired = false;
-      WiFi.disconnect();
-      setLedUnpaired();
-    } else {
-      setLedPaired();
-    }
-  }
+    
+    setLedUnpaired();
+    delay(CNX_INTERVAL);
 }
