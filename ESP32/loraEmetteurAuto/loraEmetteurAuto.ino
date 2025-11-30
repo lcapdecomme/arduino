@@ -10,7 +10,7 @@
 #define VRY_PIN 35
 #define SW_PIN  32
 #define LED_PIN 2  // LED locale
-#define INTERVAL 5000            // Intervalle entre envois (en ms)
+#define INTERVAL 3000            // Intervalle entre envois (en ms)
 
 String securityKey = "SECURE123"; // même clé que l’émetteur
 
@@ -36,6 +36,35 @@ void setup() {
   loraSerial.begin(9600, SERIAL_8N1, LORA_RX, LORA_TX);
   // Initialisation LoRa
   e32ttl100.begin();
+
+
+  // Lecture de la configuration actuelle
+  ResponseStructContainer c = e32ttl100.getConfiguration();
+  Configuration configuration = *(Configuration*) c.data;
+  Serial.println("Configuration actuelle :");
+  Serial.print(F("Parity: "));
+  Serial.println(configuration.SPED.uartParity);
+  Serial.print(F("Air Data Rate: "));
+  Serial.println(configuration.SPED.airDataRate);
+  Serial.print(F("Transmission Power: "));
+  Serial.println(configuration.OPTION.transmissionPower);
+
+
+  // On peut modifier certains paramètres :
+  configuration.ADDL = 0x01; // Adresse basse (optionnel)
+  configuration.ADDH = 0x00; // Adresse haute (optionnel)
+  configuration.CHAN = 0x17; // Canal (433 + 0x17 MHz = 433 + 23 = 456 MHz)
+
+  configuration.SPED.airDataRate = AIR_DATA_RATE_000_03;  // plus lent = meilleure portée
+
+  configuration.OPTION.transmissionPower = POWER_20;   // puissance max 20 dBm (100 mW)
+  configuration.OPTION.fec = FEC_1_ON;                 // correction d’erreurs
+  configuration.OPTION.fixedTransmission = FT_TRANSPARENT_TRANSMISSION;
+
+  e32ttl100.setConfiguration(configuration, WRITE_CFG_PWR_DWN_SAVE);
+  c.close();
+
+  Serial.println("Nouvelle configuration appliquée !");
 
   Serial.println("Émetteur prêt !");
 }
