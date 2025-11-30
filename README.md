@@ -24,6 +24,7 @@ Ensuite, dans ton logiciel, il te faudra l'installer en cliquant croquis/inclure
 C'est la même chose.
 Attention juste que le répertoire lib contient 4 librairies à installer sur ton poste.
 
+3.ajout des projets lora
 
 Lionel
 
