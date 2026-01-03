@@ -2,6 +2,12 @@
  * TEMPO - Temporisateur à déclenchement conditionnel
  * ESP32 avec LED et détection de contact
  * 
+ * Branchement :
+ * 
+ * Les deux fils sont sur la masse et le GPIO4
+ * La led (tige longue) sur gpio 2 
+ * La led (tige courte) sur masse
+ * 
  * Fonctionnement :
  * - Interface web captive pour configuration
  * - Paramètre 1 : Mode "Ouvert" ou "Fermé" (condition de déclenchement)
@@ -40,7 +46,7 @@
 #define AP_PASSWORD "12345678"
 
 // ----- Configuration GPIO -----
-#define PIN_LED     2      // LED intégrée ou externe
+#define PIN_LED     2      // LED intégrée ou relai externe
 #define PIN_CONTACT 4      // GPIO pour détection de contact (avec pull-up interne)
 
 // ----- Objets globaux -----
