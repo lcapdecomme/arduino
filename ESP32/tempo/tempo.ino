@@ -1,12 +1,12 @@
 /*
  * TEMPO - Temporisateur à déclenchement conditionnel
  * ESP32 avec LED et détection de contact
- * 
+ *  
  * Branchement :
  * 
- * Les deux fils sont sur la masse et le GPIO4
- * La led (tige longue) sur gpio 2 
- * La led (tige courte) sur masse
+ * Entrée : Les deux fils sont sur la masse et le GPIO4
+ * Sortie : La led (tige longue) sur gpio 2, 
+ *          La led (tige courte) sur masse
  * 
  * Fonctionnement :
  * - Interface web captive pour configuration
@@ -48,6 +48,9 @@
 // ----- Configuration GPIO -----
 #define PIN_LED     2      // LED intégrée ou relai externe
 #define PIN_CONTACT 4      // GPIO pour détection de contact (avec pull-up interne)
+#define PIN_BUTTON  5      // GPIO pour bouton activation/désactivation de l'alarme (avec pull-up interne)
+#define PIN_BUZZER  18     // GPIO pour buzzer actif
+
 
 // ----- Objets globaux -----
 DNSServer dnsServer;
@@ -78,14 +81,27 @@ SystemState currentState = STATE_WAITING;
 unsigned long stateStartTime = 0;
 bool lastContactState = false;
 
+
+// ----- État de l'alarme : activation/désactivation -----
+bool appEnabled = true;              // Application activée par défaut
+bool lastButtonState = true;         // État précédent du bouton (HIGH avec pull-up)
+unsigned long lastButtonPress = 0;   // Anti-rebond
+const unsigned long DEBOUNCE_MS = 50;
+
+
 // ----- Prototypes -----
 void handleRoot();
 void handleSave();
 void handleStatus();
+void handleCaptivePortal();
 void handleNotFound();
 void loadSettings();
 void saveSettings();
 bool readContact();
+void checkButton();
+void beepDisabled();
+void beepEnabled();
+
 
 void setup() {
   Serial.begin(115200);
@@ -95,6 +111,9 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   digitalWrite(PIN_LED, LOW);
   pinMode(PIN_CONTACT, INPUT_PULLUP);
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
+  pinMode(PIN_BUZZER, OUTPUT);
+  digitalWrite(PIN_BUZZER, LOW);
   
   // Chargement des paramètres sauvegardés
   loadSettings();
@@ -107,6 +126,7 @@ void setup() {
   Serial.printf("Délai: %lu ms\n", delayMs);
   Serial.printf("Durée: %lu ms\n", durationMs);
   Serial.printf("Contact initial: %s\n", lastContactState ? "FERME" : "OUVERT");
+  Serial.println("Application: ACTIVEE");
   
   // Démarrage WiFi AP
   WiFi.mode(WIFI_AP);
@@ -117,19 +137,59 @@ void setup() {
   // Démarrage DNS captif
   dnsServer.start(DNS_PORT, "*", WiFi.softAPIP());
   
+  // Headers par défaut pour toutes les réponses
+  server.enableCORS(true);
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+
+  
   // Configuration des routes web
   server.on("/", HTTP_GET, handleRoot);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/status", HTTP_GET, handleStatus);
+
+  
+  // Routes pour détection de portail captif (Android, Windows, etc.)
+  server.on("/generate_204", HTTP_GET, handleCaptivePortal);
+  server.on("/gen_204", HTTP_GET, handleCaptivePortal);
+  server.on("/connecttest.txt", HTTP_GET, handleCaptivePortal);
+  server.on("/hotspot-detect.html", HTTP_GET, handleCaptivePortal);  // iOS/macOS
+  server.on("/canonical.html", HTTP_GET, handleCaptivePortal);
+  server.on("/success.txt", HTTP_GET, handleCaptivePortal);
+  server.on("/ncsi.txt", HTTP_GET, handleCaptivePortal);  // Windows
+  server.on("/fwlink", HTTP_GET, handleCaptivePortal);    // Microsoft
+  // Samsung et autres Android
+  server.on("/mobile/status.php", HTTP_GET, handleCaptivePortal);
+  server.on("/kindle-wifi/wifistub.html", HTTP_GET, handleCaptivePortal);
+  server.on("/check_network_status.txt", HTTP_GET, handleCaptivePortal);
+  server.on("/library/test/success.html", HTTP_GET, handleCaptivePortal);
+  server.on("/wifi/v1/portal", HTTP_GET, handleCaptivePortal);
+  
   server.onNotFound(handleNotFound);
   
   server.begin();
   Serial.println("Serveur web démarré");
+  
+  // Test buzzer
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(1000);
+  digitalWrite(PIN_BUZZER, LOW);
+  
 }
 
 void loop() {
   dnsServer.processNextRequest();
   server.handleClient();
+    
+  // Vérifier le bouton d'activation/désactivation
+  checkButton();
+  
+  // Si l'application est suspendue, ne pas traiter la machine à états
+  if (!appEnabled) {
+    delay(10);
+    return;
+  }
   
   // Machine à états
   switch (currentState) {
@@ -212,6 +272,53 @@ bool readContact() {
   return (digitalRead(PIN_CONTACT) == LOW);
 }
 
+
+// ----- Vérification du bouton -----
+void checkButton() {
+  bool currentButtonState = digitalRead(PIN_BUTTON);
+  
+  // Détection front descendant (appui) avec anti-rebond
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
+    if (millis() - lastButtonPress > DEBOUNCE_MS) {
+      lastButtonPress = millis();
+      
+      if (appEnabled) {
+        // Désactiver l'application
+        appEnabled = false;
+        currentState = STATE_WAITING;
+        digitalWrite(PIN_LED, LOW);
+        Serial.println(">>> Application SUSPENDUE");
+        beepDisabled();
+      } else {
+        // Réactiver l'application
+        appEnabled = true;
+        lastContactState = readContact();  // Réinitialiser l'état du contact
+        Serial.println(">>> Application ACTIVEE");
+        beepEnabled();
+      }
+    }
+  }
+  
+  lastButtonState = currentButtonState;
+}
+
+// ----- 3 bips courts (désactivation) -----
+void beepDisabled() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(PIN_BUZZER, HIGH);
+    delay(150);
+    digitalWrite(PIN_BUZZER, LOW);
+    delay(100);
+  }
+}
+
+// ----- 1 bip long de 3 secondes (activation) -----
+void beepEnabled() {
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(3000);
+  digitalWrite(PIN_BUZZER, LOW);
+}
+
 // ----- Chargement des paramètres -----
 void loadSettings() {
   preferences.begin("tempo", true); // Lecture seule
@@ -280,12 +387,23 @@ void handleRoot() {
   html += "    .status.delay { border-left: 4px solid #17a2b8; }\n";
   html += "    .status.active { border-left: 4px solid #28a745; }\n";
   html += "    .status.finished { border-left: 4px solid #6c757d; }\n";
+  html += "    .status.disabled { border-left: 4px solid #dc3545; background: rgba(220,53,69,0.2); }\n";
   html += "    #statusText { font-weight: bold; }\n";
+  html += "    .app-state { text-align: center; padding: 10px; margin-bottom: 20px; ";
+  html += "                border-radius: 10px; font-weight: bold; }\n";
+  html += "    .app-state.enabled { background: rgba(40,167,69,0.3); color: #28a745; }\n";
+  html += "    .app-state.disabled { background: rgba(220,53,69,0.3); color: #dc3545; }\n";
   html += "  </style>\n";
   html += "</head>\n";
   html += "<body>\n";
   html += "  <div class='container'>\n";
   html += "    <h1>⏱ TEMPO</h1>\n";
+  
+  // Affichage état activation
+  html += "    <div class='app-state";
+  html += appEnabled ? " enabled'>✅ APPLICATION ACTIVÉE" : " disabled'>⛔ APPLICATION SUSPENDUE";
+  html += "</div>\n";
+  
   html += "    <form action='/save' method='POST'>\n";
   
   // Option 1 : Mode de déclenchement
@@ -398,8 +516,16 @@ void handleRoot() {
   html += "      fetch('/status').then(r => r.json()).then(data => {\n";
   html += "        var box = document.getElementById('statusBox');\n";
   html += "        var text = document.getElementById('statusText');\n";
+  html += "        var appState = document.querySelector('.app-state');\n";
   html += "        box.className = 'status ' + data.state;\n";
   html += "        text.textContent = data.message;\n";
+  html += "        if (data.enabled) {\n";
+  html += "          appState.className = 'app-state enabled';\n";
+  html += "          appState.textContent = '✅ APPLICATION ACTIVÉE';\n";
+  html += "        } else {\n";
+  html += "          appState.className = 'app-state disabled';\n";
+  html += "          appState.textContent = '⛔ APPLICATION SUSPENDUE';\n";
+  html += "        }\n";
   html += "      }).catch(e => {});\n";
   html += "    }\n";
   html += "    updateStatus();\n";
@@ -410,6 +536,7 @@ void handleRoot() {
   
   server.send(200, "text/html", html);
 }
+
 
 // ----- Gestionnaire sauvegarde -----
 void handleSave() {
@@ -462,38 +589,73 @@ void handleSave() {
   server.send(302, "text/plain", "");
 }
 
+
 // ----- Gestionnaire status JSON -----
 void handleStatus() {
   String json = "{";
   
-  switch (currentState) {
-    case STATE_WAITING:
-      json += "\"state\":\"waiting\",";
-      json += "\"message\":\"⏸ En attente de déclenchement\"";
-      break;
-    case STATE_DELAY:
-      {
-        unsigned long remaining = delayMs - (millis() - stateStartTime);
-        json += "\"state\":\"delay\",";
-        json += "\"message\":\"⏳ Temporisation: " + String(remaining / 1000) + "s (annulable)\"";
-      }
-      break;
-    case STATE_ACTIVE:
-      {
-        unsigned long remaining = durationMs - (millis() - stateStartTime);
-        json += "\"state\":\"active\",";
-        json += "\"message\":\"💡 LED active: " + String(remaining / 1000) + "s\"";
-      }
-      break;
-    case STATE_FINISHED:
-      json += "\"state\":\"finished\",";
-      json += "\"message\":\"✅ Cycle terminé\"";
-      break;
+  // État activation
+  json += "\"enabled\":";
+  json += appEnabled ? "true" : "false";
+  json += ",";
+  
+  if (!appEnabled) {
+    json += "\"state\":\"disabled\",";
+    json += "\"message\":\"⛔ Application suspendue\"";
+  } else {
+    switch (currentState) {
+      case STATE_WAITING:
+        json += "\"state\":\"waiting\",";
+        json += "\"message\":\"⏸ En attente de déclenchement\"";
+        break;
+      case STATE_DELAY:
+        {
+          unsigned long remaining = delayMs - (millis() - stateStartTime);
+          json += "\"state\":\"delay\",";
+          json += "\"message\":\"⏳ Temporisation: " + String(remaining / 1000) + "s (annulable)\"";
+        }
+        break;
+      case STATE_ACTIVE:
+        {
+          unsigned long remaining = durationMs - (millis() - stateStartTime);
+          json += "\"state\":\"active\",";
+          json += "\"message\":\"💡 LED active: " + String(remaining / 1000) + "s\"";
+        }
+        break;
+      case STATE_FINISHED:
+        json += "\"state\":\"finished\",";
+        json += "\"message\":\"✅ Cycle terminé\"";
+        break;
+    }
   }
   
   json += "}";
   server.send(200, "application/json", json);
 }
+
+// ----- Gestionnaire portail captif (Android/Windows) -----
+void handleCaptivePortal() {
+  // Rediriger vers la page principale pour déclencher l'affichage du portail
+  server.sendHeader("Location", "http://" + WiFi.softAPIP().toString() + "/");
+  server.send(302, "text/plain", "");
+}
+
+// ----- Gestionnaire portail captif (Android/Windows) A TESTER Si problème -----
+void handleCaptivePortalATESTER() {
+  // Pour déclencher le popup sur Android, il faut répondre avec un code 200
+  // et du contenu HTML (pas un 204 ni une redirection)
+  // Android compare la réponse attendue et détecte le portail
+  
+  String html = "<!DOCTYPE html><html><head>";
+  html += "<meta http-equiv='refresh' content='0; url=http://";
+  html += WiFi.softAPIP().toString();
+  html += "/'></head><body>";
+  html += "<a href='http://" + WiFi.softAPIP().toString() + "/'>Cliquez ici</a>";
+  html += "</body></html>";
+  
+  server.send(200, "text/html", html);
+}
+
 
 // ----- Gestionnaire 404 (redirection captive) -----
 void handleNotFound() {
