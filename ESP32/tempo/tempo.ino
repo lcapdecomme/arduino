@@ -15,6 +15,16 @@
  * - Paramètre 3 : Durée d'allumage de la LED
  * - Sauvegarde des paramètres en NVS
  * 
+ * Preparation du projet sur un nouveau PC
+ * 
+ * 1. le **board ESP32** installé dans Arduino IDE :
+ *    . **Arduino IDE** → **Fichier** → **Préférences**
+ *    . Dans "URL de gestionnaire de cartes supplémentaires", ajouter :
+ *      https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+ * 
+ * 2. Outils → Type de carte → Gestionnaire de cartes
+ *      Chercher "esp32" et installer "ESP32 by Espressif Systems"
+ * 
  * Logique de fonctionnement
  * Le système surveille l'état du contact (fils qui se touchent = circuit fermé, fils séparés = circuit ouvert).
  * Si l'utilisateur choisit "Fermé" → le système se déclenche quand les fils se touchent
@@ -113,7 +123,7 @@ void setup() {
   pinMode(PIN_CONTACT, INPUT_PULLUP);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_BUZZER, OUTPUT);
-  digitalWrite(PIN_BUZZER, LOW);
+  //digitalWrite(PIN_BUZZER, LOW);
   
   // Chargement des paramètres sauvegardés
   loadSettings();
@@ -172,9 +182,9 @@ void setup() {
   Serial.println("Serveur web démarré");
   
   // Test buzzer
-  digitalWrite(PIN_BUZZER, HIGH);
+  tone(PIN_BUZZER, 400);
   delay(1000);
-  digitalWrite(PIN_BUZZER, LOW);
+  noTone(PIN_BUZZER);
   
 }
 
@@ -303,20 +313,23 @@ void checkButton() {
 }
 
 // ----- 3 bips courts (désactivation) -----
+// buzzer passif.
+// avec digitalWrite (ON/OFF simple), le son est mauvais/sifflant. 
+// Avec tone() (signal PWM à fréquence contrôlée), le son est propre et on peut régler la hauteur.
 void beepDisabled() {
   for (int i = 0; i < 3; i++) {
-    digitalWrite(PIN_BUZZER, HIGH);
-    delay(150);
-    digitalWrite(PIN_BUZZER, LOW);
+    tone(PIN_BUZZER, 300);
+    delay(200);
+    noTone(PIN_BUZZER);
     delay(100);
   }
 }
 
 // ----- 1 bip long de 3 secondes (activation) -----
 void beepEnabled() {
-  digitalWrite(PIN_BUZZER, HIGH);
+  tone(PIN_BUZZER, 400);  
   delay(3000);
-  digitalWrite(PIN_BUZZER, LOW);
+  noTone(PIN_BUZZER);
 }
 
 // ----- Chargement des paramètres -----
