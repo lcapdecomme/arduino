@@ -101,10 +101,11 @@ void applyFanState() {
     duty = 0;
   } else {
     switch (speed) {
-      case 1: duty = 160; break; // vitesse basse
-      case 2: duty = 200; break; // vitesse moyenne
-      case 3: duty = 255; break; // vitesse haute
-      default: duty = 150; break;
+      case 1: duty = 120; break; // vitesse basse
+      case 2: duty = 160; break; // vitesse moyenne-basse
+      case 3: duty = 210; break; // vitesse moyenne-haute
+      case 4: duty = 255; break; // vitesse haute
+      default: duty = 160; break;
     }
   }
   Serial.print("Vitesse : ");

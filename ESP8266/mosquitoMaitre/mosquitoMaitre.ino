@@ -65,8 +65,8 @@ Flash Size: 4MB (FS:64KB OTA:~1019KB)
 
 Change-la pour une version avec plus de FS (File System), par exemple :
 Flash Size: 4M (1M LittleFS)
-ou
-Flash Size: 4MB (1MB FS)
+ou mieux 
+Flash Size: 4MB (2MB LITTLEFS)
 
 Principe de branchement : 
 
@@ -162,7 +162,7 @@ void saveSettings() {
 void loadSettings() {
   powerState = EEPROM.read(0) == 1;
   speed = EEPROM.read(1);
-  if (speed < 1 || speed > 3) speed = 3;
+  if (speed < 1 || speed > 4) speed = 4;
   Serial.print("Charge vitesse : ");
   Serial.println(speed);
 }
@@ -210,10 +210,11 @@ void applyFanState() {
     duty = 0;
   } else {
     switch (speed) {
-      case 1: duty = 160; break; // vitesse basse
-      case 2: duty = 200; break; // vitesse moyenne
-      case 3: duty = 255; break; // vitesse haute
-      default: duty = 150; break;
+      case 1: duty = 120; break; // vitesse basse
+      case 2: duty = 160; break; // vitesse moyenne-basse
+      case 3: duty = 210; break; // vitesse moyenne-haute
+      case 4: duty = 255; break; // vitesse haute
+      default: duty = 160; break;
     }
   }
   analogWrite(FAN_PIN, duty);
@@ -239,6 +240,7 @@ void handleRoot() {
   .slider::-webkit-slider-thumb { width: 30px; height: 30px; background: #007bff; border-radius: 50%; cursor: pointer; }
   #status { font-size: 1.4em; margin: 0.5em; }
   img { margin-top: 2em; }
+  .slider:disabled {  opacity: 0.4;  cursor: not-allowed;}
   </style>
   </head>
   <body>
@@ -247,7 +249,7 @@ void handleRoot() {
   <div id='status'>État : <span id='power'></span></div>
   <button id='toggle' class='btn'>ON / OFF</button><br>
   <label for='speed'>Vitesse : <span id='valspeed'></span></label><br>
-  <input class='slider' type='range' min='1' max='3' id='speed'>
+  <input class='slider' type='range' min='1' max='4' id='speed'>
   <br>
   <div class="status">
     <h3><span id="slaveCount"></span></h3>
@@ -283,11 +285,13 @@ void handleRoot() {
           toggleButton.classList.add('on');
           sel.classList.remove('off');
           sel.classList.add('on');
+          sel.disabled = false;
         } else {
           toggleButton.classList.remove('on');
           toggleButton.classList.add('off');
           sel.classList.remove('on');
           sel.classList.add('off');
+          sel.disabled = true;
         }
         const valspeed = document.getElementById('valspeed');
         valspeed.innerHTML = j.speed;
@@ -328,6 +332,9 @@ void handleRoot() {
               break;
             case 3:
               fanImage.src = '/mosquito3.png?t=' + Date.now();
+              break;
+            case 4:
+              fanImage.src = '/mosquito4.png?t=' + Date.now();
               break;
           }
         } else {
@@ -377,7 +384,7 @@ void handleCommand() {
   } else if (act == "speed") {
     int v = doc["value"] | speed;
     if (v < 1) v = 1;
-    if (v > 3) v = 3;
+    if (v > 4) v = 4;
     speed = v;
     applyFanState();
     saveSettings();
@@ -471,12 +478,33 @@ void handleRegister() {
 
 }
 
-void handleNotFound() {
-  // Redirige toutes les requêtes vers la page d'accueil
-  server.sendHeader("Location", "/", true);
-  server.send(302, "text/plain", "");
+void handleCaptivePortal() {
+  // On sert directement une page minimaliste qui force le client
+  // à ouvrir notre interface — pas de redirect, certains OS le suivent mal
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.sendHeader("Expires", "-1");
+  
+  String html = F(
+    "<!DOCTYPE html><html><head>"
+    "<meta charset='UTF-8'>"
+    "<meta http-equiv='refresh' content='0; url=http://192.168.4.1/'>"
+    "<title>Mosquito</title>"
+    "<style>body{font-family:sans-serif;text-align:center;margin-top:3em}"
+    "a{display:inline-block;padding:1em 2em;background:#007bff;color:white;"
+    "text-decoration:none;border-radius:10px;font-size:1.2em}</style>"
+    "</head><body>"
+    "<h2>Contrôleur Mosquito</h2>"
+    "<p><a href='http://192.168.4.1/'>Ouvrir l'interface</a></p>"
+    "</body></html>"
+  );
+  server.send(200, "text/html", html);
 }
 
+void handleNotFound() {
+  // Pour toutes les autres URLs inconnues, on sert aussi la page captive
+  handleCaptivePortal();
+}
 
 void setupAP() {
   WiFi.softAPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
@@ -514,6 +542,17 @@ void setup() {
   server.serveStatic("/", LittleFS, "/");
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
+  // Handlers pour la détection de portail captif
+  server.on("/generate_204", handleCaptivePortal);        // Android
+  server.on("/gen_204", handleCaptivePortal);             // Android (vieux)
+  server.on("/hotspot-detect.html", handleCaptivePortal); // iOS / macOS
+  server.on("/library/test/success.html", handleCaptivePortal); // iOS
+  server.on("/success.txt", handleCaptivePortal);         // iOS / Firefox
+  server.on("/connecttest.txt", handleCaptivePortal);     // Windows
+  server.on("/ncsi.txt", handleCaptivePortal);            // Windows (vieux)
+  server.on("/redirect", handleCaptivePortal);            // Windows
+  server.on("/canonical.html", handleCaptivePortal);      // Firefox
+  server.on("/fwlink", handleCaptivePortal);              // Microsoft
 
   server.begin();
   Serial.println();
