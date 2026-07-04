@@ -57,7 +57,7 @@ GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11 pour
 #include <ArduinoJson.h>
 
 const char* MASTER_SSID = "Mosquito";
-// Mot de passe sur l'AP ?  mets-le ici ; sinon laisse vide.
+// Mot de passe sur le maitre  ?  mets-le ici ; sinon laisse vide.
 const char* MASTER_PASS = "";
 
 const char* MASTER_IP = "192.168.4.1"; // IP par défaut du softAP ESP8266
@@ -80,7 +80,7 @@ String chipIdStr() {
 
 unsigned long lastCnx = 0;
 unsigned long lastCommandId = 0;
-bool powerState = true;
+bool powerState = false;
 int speed = 3;
 bool paired = false;
 

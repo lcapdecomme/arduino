@@ -79,7 +79,7 @@ IRLZ24N
 G D S
 
 Avec 
-G = Gate
+G = Gate / Grille
 D = Drain
 S = Source
 
@@ -87,7 +87,7 @@ S = Source
 
 + alim 12V ------> fil rouge ( + ) ventilateur
 fil noir ( - ) ventilateur --> DRAIN du IRF3708
-SOURCE du IRF3708 ---------> GND(-) alim 12V + GND Arduino Nano/ESP32/ESP8266 (masse commune)
+SOURCE du IRF3708ç ---------> GND(-) alim 12V + GND Arduino Nano/ESP32/ESP8266 (masse commune)
 GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11 pour ESP32 MAIS  TX pour ESP8266)
                     |
                     +--[10kΩ]--> GND (pull-down)
@@ -115,7 +115,7 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 #include <EEPROM.h>
 #include <DNSServer.h>
 #include <ArduinoJson.h>
-#include <LittleFS.h>           // Pour LittleFS
+#include <LittleFS.h>           
 
 
 #define AP_SSID "Mosquito"
@@ -123,7 +123,7 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 #define AP_CHANNEL 1
 
 // Pins (ajuste selon ton câblage)
-const int FAN_PIN = 1; // PWM pin vers gate du MOSFET
+const int FAN_PIN = 12; // PWM pin vers gate du MOSFET
 const int LED_PIN = LED_BUILTIN; // indicateur local (ESP intégré), active low on many boards
 //const int LED_PIN = 2; // indicateur local (ESP intégré), active low on many boards
 
@@ -162,7 +162,7 @@ void saveSettings() {
 void loadSettings() {
   powerState = EEPROM.read(0) == 1;
   speed = EEPROM.read(1);
-  if (speed < 1 || speed > 4) speed = 4;
+  if (speed < 1 || speed > 4) speed = 2;
   Serial.print("Charge vitesse : ");
   Serial.println(speed);
 }
@@ -477,14 +477,31 @@ void handleRegister() {
   server.client().stop();
 
 }
-
 void handleCaptivePortal() {
-  // On sert directement une page minimaliste qui force le client
-  // à ouvrir notre interface — pas de redirect, certains OS le suivent mal
+  String ua = server.header("User-Agent");
+  
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   server.sendHeader("Pragma", "no-cache");
   server.sendHeader("Expires", "-1");
+  server.sendHeader("Connection", "close");
   
+  // Détection du CNA iOS : il faut lui renvoyer du HTML qui ne contient PAS "Success"
+  // sinon il croit avoir Internet et n'ouvre pas le pop-up
+  if (ua.indexOf("CaptiveNetworkSupport") >= 0) {
+    String html = F(
+      "<!DOCTYPE html><html><head>"
+      "<title>Mosquito</title></head><body>"
+      "<h1>Portail Mosquito</h1>"
+      "<p>Touchez ici pour configurer.</p>"
+      "</body></html>"
+    );
+    // Status 200, PAS de mot "Success" -> iOS ouvre le CNA
+    server.send(200, "text/html", html);
+    server.client().stop();
+    return;
+  }
+  
+  // Pour Android / Windows / autres : page avec auto-refresh vers l'interface
   String html = F(
     "<!DOCTYPE html><html><head>"
     "<meta charset='UTF-8'>"
@@ -494,11 +511,12 @@ void handleCaptivePortal() {
     "a{display:inline-block;padding:1em 2em;background:#007bff;color:white;"
     "text-decoration:none;border-radius:10px;font-size:1.2em}</style>"
     "</head><body>"
-    "<h2>Contrôleur Mosquito</h2>"
+    "<h2>Controleur Mosquito</h2>"
     "<p><a href='http://192.168.4.1/'>Ouvrir l'interface</a></p>"
     "</body></html>"
   );
   server.send(200, "text/html", html);
+  server.client().stop();
 }
 
 void handleNotFound() {
@@ -524,6 +542,8 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH); // LED off by default for builtin active-low
 
+  EEPROM.begin(512);           // <-- indispensable sur ESP8266, sinon read/write/commit sont no-op
+
   // Démarre l'espace de stockage interne
   LittleFS.begin();
 
@@ -532,6 +552,7 @@ void setup() {
   applyFanState();
 
   setupAP();
+
   
   server.on("/", handleRoot);
   server.on("/command", HTTP_POST, handleCommand);
