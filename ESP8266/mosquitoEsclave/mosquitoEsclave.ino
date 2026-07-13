@@ -27,8 +27,6 @@ G = Gate
 D = Drain
 S = Source
 
-
-
 + alim 12V ------> fil rouge ( + ) ventilateur
 fil noir ( - ) ventilateur --> DRAIN du IRF3708
 SOURCE du IRF3708 ---------> GND(-) alim 12V + GND Arduino Nano/ESP32/ESP8266 (masse commune)

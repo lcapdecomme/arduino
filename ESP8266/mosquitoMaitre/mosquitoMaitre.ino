@@ -87,7 +87,7 @@ S = Source
 
 + alim 12V ------> fil rouge ( + ) ventilateur
 fil noir ( - ) ventilateur --> DRAIN du IRF3708
-SOURCE du IRF3708ç ---------> GND(-) alim 12V + GND Arduino Nano/ESP32/ESP8266 (masse commune)
+SOURCE du IRF3708 ---------> GND(-) alim 12V + GND Arduino Nano/ESP32/ESP8266 (masse commune)
 GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11 pour ESP32 MAIS  TX pour ESP8266)
                     |
                     +--[10kΩ]--> GND (pull-down)
@@ -95,14 +95,16 @@ GATE du IRF3708 ---[220Ω]--> Pin PWM Nano (ex : D3, D5, D6, D9, D10 ou D11 pour
 | Broche (NodeMCU) | GPIO n° (à utiliser) |
 | ---------------- | -------------------- |
 | D0               | GPIO16               |
+| TX               | GPIO1 (1)            |
 | D1               | GPIO5                |
 | D2               | GPIO4                |
 | D3               | GPIO0                |
 | D4               | GPIO2                |
 | D5               | GPIO14               |
-| D6               | GPIO12               |
+| D6               | GPIO12 (12)          |
 | D7               | GPIO13               |
 | D8               | GPIO15               |
+
 
 url de carte supplémentaire : 
 https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
@@ -123,7 +125,7 @@ http://arduino.esp8266.com/stable/package_esp8266com_index.json
 #define AP_CHANNEL 1
 
 // Pins (ajuste selon ton câblage)
-const int FAN_PIN = 12; // PWM pin vers gate du MOSFET
+const int FAN_PIN = 1    ; // PWM pin vers gate du MOSFET
 const int LED_PIN = LED_BUILTIN; // indicateur local (ESP intégré), active low on many boards
 //const int LED_PIN = 2; // indicateur local (ESP intégré), active low on many boards
 
