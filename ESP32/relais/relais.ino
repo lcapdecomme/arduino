@@ -1,11 +1,16 @@
 /*
- * Telerelais — Firmware ESP32 — Phase 5c
+ * Telerelais — Firmware ESP32 — version 0.3.0
+ *
+ * Compatible avec les sites de type 'schedule' (planning) et 'pulse' (impulsion).
  *
  * Cycle de vie :
  *  1. Au boot, lecture de la config en NVS (Preferences).
  *  2. Si NVS vide → mode AP + portail captif → enrôlement dynamique.
  *  3. Sinon → connexion WiFi + heartbeat vers le serveur toutes les 5s.
  *  4. Appui long (> 5s) sur le bouton BOOT → wipe NVS + redémarrage.
+ *  5. Réception d'une impulsion (champs pulse_id et pulse_ms dans la réponse) :
+ *     l'ESP32 met le GPIO à HIGH pendant pulse_ms ms, puis remet à LOW.
+ *     last_pulse_id est persisté en NVS pour éviter les doublons après reboot.
  */
 
 #include <WiFi.h>
@@ -20,27 +25,25 @@
 // CONFIG
 // =========================================================================
 
-// Serveur
 const char* SERVER_HOST    = "relais.pythonanywhere.com";
 const char* ENROLL_URL     = "https://relais.pythonanywhere.com/api/enroll";
 const char* HEARTBEAT_URL  = "https://relais.pythonanywhere.com/api/heartbeat";
 
-// Broches
-const int PIN_RELAY        = 4;    // LED ou relais
-const int PIN_STATUS_LED   = 2;    // LED interne ESP32
-const int PIN_BOOT_BUTTON  = 0;    // Bouton BOOT de la carte
+const int PIN_RELAY        = 4;
+const int PIN_STATUS_LED   = 2;
+const int PIN_BOOT_BUTTON  = 0;
 
-// Timings (ms)
 const unsigned long HEARTBEAT_INTERVAL_MS   = 5000;
 const unsigned long BOOT_LONG_PRESS_MS      = 5000;
 const unsigned long AP_CAPTIVE_DNS_PORT     = 53;
 
-// WiFi AP (mode configuration)
 const char* AP_SSID        = "Telerelais";
-const char* AP_PASSWORD    = "mosquito";   // TODO en prod : mot de passe aléatoire par device
+const char* AP_PASSWORD    = "mosquito";
 const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
+
+const char* FW_VERSION = "0.3.0";
 
 // =========================================================================
 // État runtime
@@ -63,10 +66,11 @@ Preferences   prefs;
 WebServer     apServer(80);
 DNSServer     dnsServer;
 
-String configSSID;           // lu en NVS
-String configPassword;       // lu en NVS
-String configDeviceToken;    // lu en NVS
-String configSiteName;       // lu en NVS (pour affichage)
+String   configSSID;
+String   configPassword;
+String   configDeviceToken;
+String   configSiteName;
+int32_t  lastPulseId = 0;
 
 
 // =========================================================================
@@ -82,14 +86,12 @@ void updateStatusLed() {
     case STATE_BOOT:
       digitalWrite(PIN_STATUS_LED, LOW);
       break;
-    case STATE_AP_MODE:
-      // Double blink court : ON 100ms, OFF 100ms, ON 100ms, OFF 700ms
-      {
-        unsigned long cycle = now % 1000;
-        bool on = (cycle < 100) || (cycle >= 200 && cycle < 300);
-        digitalWrite(PIN_STATUS_LED, on ? HIGH : LOW);
-      }
+    case STATE_AP_MODE: {
+      unsigned long cycle = now % 1000;
+      bool on = (cycle < 100) || (cycle >= 200 && cycle < 300);
+      digitalWrite(PIN_STATUS_LED, on ? HIGH : LOW);
       break;
+    }
     case STATE_WIFI_CONNECTING:
       if (now - lastBlink > 200) {
         ledOn = !ledOn;
@@ -129,33 +131,46 @@ void applyRelayState(bool on) {
 // =========================================================================
 
 void loadConfig() {
-  prefs.begin("telerelais", true);   // read-only
+  prefs.begin("telerelais", true);
   configSSID        = prefs.getString("ssid", "");
   configPassword    = prefs.getString("password", "");
   configDeviceToken = prefs.getString("token", "");
   configSiteName    = prefs.getString("site", "");
+  lastPulseId       = prefs.getInt("pulse_id", 0);
   prefs.end();
-  Serial.printf("[NVS] ssid='%s' token=%s site='%s'\n",
+  Serial.printf("[NVS] ssid='%s' token=%s site='%s' last_pulse_id=%d\n",
                 configSSID.c_str(),
                 configDeviceToken.length() ? "[present]" : "[vide]",
-                configSiteName.c_str());
+                configSiteName.c_str(),
+                lastPulseId);
 }
 
 void saveConfig(const String& ssid, const String& password,
                 const String& token, const String& siteName) {
-  prefs.begin("telerelais", false);  // read-write
+  prefs.begin("telerelais", false);
   prefs.putString("ssid", ssid);
   prefs.putString("password", password);
   prefs.putString("token", token);
   prefs.putString("site", siteName);
+  prefs.putInt("pulse_id", 0);    // reset pour la nouvelle association
   prefs.end();
+  lastPulseId = 0;
   Serial.println("[NVS] Config sauvegardée");
+}
+
+void savePulseId(int32_t newId) {
+  prefs.begin("telerelais", false);
+  prefs.putInt("pulse_id", newId);
+  prefs.end();
+  lastPulseId = newId;
+  Serial.printf("[NVS] last_pulse_id = %d\n", newId);
 }
 
 void wipeConfig() {
   prefs.begin("telerelais", false);
   prefs.clear();
   prefs.end();
+  lastPulseId = 0;
   Serial.println("[NVS] Config effacée");
 }
 
@@ -248,24 +263,19 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 <div class="card">
 <h1>Configuration Telerelais</h1>
 <p class="sub">Renseignez les informations pour mettre en service cet ESP32.</p>
-
 <form id="f" method="POST" action="/save">
 <label>Réseau WiFi</label>
 <select name="ssid" id="ssid" required></select>
 <div class="hint">Si votre réseau n'apparaît pas, rechargez la page.</div>
-
 <label>Mot de passe WiFi</label>
 <input type="password" name="password" required>
-
 <label>Code d'enrôlement</label>
-<input type="text" name="code" required placeholder="XXXX-YYYY" autocapitalize="characters">
+<input type="text" name="code" required placeholder="123456" inputmode="numeric" pattern="[0-9]*" maxlength="6">
 <div class="hint">Obtenu depuis le portail Telerelais.</div>
-
 <button type="submit" id="btn">Valider</button>
 </form>
 <div id="msg"></div>
 </div>
-
 <script>
 fetch('/scan').then(r => r.json()).then(nets => {
   var sel = document.getElementById('ssid');
@@ -333,7 +343,6 @@ void handleSave() {
 
   Serial.printf("[AP] Tentative : ssid='%s' code='%s'\n", ssid.c_str(), code.c_str());
 
-  // On bascule en mode STA pour tester la connexion WiFi puis enrôler
   WiFi.mode(WIFI_AP_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
 
@@ -353,7 +362,6 @@ void handleSave() {
     return;
   }
 
-  // WiFi OK, on tente l'enrôlement
   String token, siteName, errMsg;
   if (!enrollWithCode(code, token, siteName, errMsg)) {
     StaticJsonDocument<256> resp;
@@ -366,7 +374,6 @@ void handleSave() {
     return;
   }
 
-  // Succès : on sauvegarde et on répond, puis on redémarre
   saveConfig(ssid, password, token, siteName);
 
   StaticJsonDocument<256> resp;
@@ -380,14 +387,12 @@ void handleSave() {
 }
 
 void handleCaptivePortal() {
-  // Redirige toute requête inconnue vers /
   apServer.sendHeader("Location", "http://192.168.4.1/", true);
   apServer.send(302, "text/plain", "");
 }
 
 void startApMode() {
   currentState = STATE_AP_MODE;
-
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
@@ -440,7 +445,7 @@ void connectWiFi() {
 
 
 // =========================================================================
-// Heartbeat HTTPS
+// Heartbeat HTTPS — gère schedule ET pulse
 // =========================================================================
 
 bool sendHeartbeat() {
@@ -456,15 +461,15 @@ bool sendHeartbeat() {
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", String("Bearer ") + configDeviceToken);
 
-  StaticJsonDocument<128> reqDoc;
+  StaticJsonDocument<192> reqDoc;
   reqDoc["state"] = relayState ? "on" : "off";
-  reqDoc["fw"]    = "0.2.0";
+  reqDoc["fw"]    = FW_VERSION;
+  reqDoc["last_pulse_id"] = lastPulseId;
   String reqBody;
   serializeJson(reqDoc, reqBody);
 
   int status = http.POST(reqBody);
   if (status == 401) {
-    // Token rejeté : le site a été détaché côté admin. On efface la config et on redémarre en mode AP.
     Serial.println("[HB] Token rejeté (401), effacement de la config.");
     http.end();
     wipeConfig();
@@ -473,15 +478,12 @@ bool sendHeartbeat() {
     return false;
   }
   if (status != 200) {
-     const char* msg = "";
+    const char* msg = "";
     switch (status) {
-      case -1:  msg = "(connexion refusée, serveur redémarré ?)"; break;
-      case -11: msg = "(timeout de lecture)"; break;
+      case -1:  msg = "(connexion refusée)"; break;
+      case -11: msg = "(timeout)"; break;
       case -2:  msg = "(envoi échoué)"; break;
       case -3:  msg = "(connexion perdue)"; break;
-      case -4:  msg = "(pas de ressource)"; break;
-      case -5:  msg = "(erreur TCP)"; break;
-      case -6:  msg = "(pas de HTTP server)"; break;
     }
     Serial.printf("[HB] HTTP %d %s\n", status, msg);
     http.end();
@@ -491,24 +493,42 @@ bool sendHeartbeat() {
   String respBody = http.getString();
   http.end();
 
-  StaticJsonDocument<256> respDoc;
-  if (deserializeJson(respDoc, respBody)) return false;
+  StaticJsonDocument<384> respDoc;
+  if (deserializeJson(respDoc, respBody)) {
+    Serial.println("[HB] JSON invalide");
+    return false;
+  }
 
+  // 1. État désiré (toujours présent ; pour sites pulse, c'est "off")
   const char* desired = respDoc["desired"];
-  if (!desired) return false;
+  if (desired) {
+    applyRelayState(strcmp(desired, "on") == 0);
+  }
 
-  applyRelayState(strcmp(desired, "on") == 0);
-  Serial.printf("[HB] OK desired=%s\n", desired);
+  // 2. Impulsion ? (présent uniquement pour sites pulse avec demande en attente)
+  int32_t pulseId = respDoc["pulse_id"] | 0;
+  int32_t pulseMs = respDoc["pulse_ms"] | 0;
+
+  if (pulseId > 0 && pulseMs > 0 && pulseId > lastPulseId) {
+    Serial.printf("[PULSE] id=%d duration=%dms\n", pulseId, pulseMs);
+    digitalWrite(PIN_RELAY, HIGH);
+    delay(pulseMs);
+    digitalWrite(PIN_RELAY, LOW);
+    savePulseId(pulseId);
+    Serial.println("[PULSE] terminée");
+  } else {
+    Serial.printf("[HB] OK desired=%s\n", desired ? desired : "?");
+  }
+
   return true;
 }
 
 
 // =========================================================================
-// Bouton BOOT (reset config)
+// Bouton BOOT
 // =========================================================================
 
 void checkBootButton() {
-  // Pressé = LOW sur ESP32 (pull-up interne)
   if (digitalRead(PIN_BOOT_BUTTON) == LOW) {
     if (bootPressStart == 0) {
       bootPressStart = millis();
@@ -531,7 +551,7 @@ void checkBootButton() {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  Serial.println("\n\n=== Telerelais firmware 0.2.0 ===");
+  Serial.printf("\n\n=== Telerelais firmware %s ===\n", FW_VERSION);
 
   pinMode(PIN_RELAY,       OUTPUT);
   pinMode(PIN_STATUS_LED,  OUTPUT);
@@ -560,7 +580,6 @@ void loop() {
     return;
   }
 
-  // Mode normal
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
   }
