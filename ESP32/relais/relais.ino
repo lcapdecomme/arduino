@@ -1,21 +1,25 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.3.0
+ * Telerelais — Firmware ESP32 — version 0.4.0
  *
  * Compatible avec les sites de type 'schedule' (planning) et 'pulse' (impulsion).
+ *
+ * Nouveauté v0.4.0 : forçage physique local via un contact sec sur GPIO 14.
+ *   - Contact fermé (2 fils reliés à GND) → relais forcé ON, priorité absolue
+ *   - Contact ouvert → comportement normal (planning / forçage serveur / etc.)
+ *   - L'état est remonté au serveur via le champ physical_override du heartbeat.
+ *
+ * Câblage du contact externe :
+ *   - Un fil sur GPIO 14
+ *   - Un fil sur GND
+ *   - Le contact ferme quand les deux fils se touchent.
  *
  * Cycle de vie :
  *  1. Au boot, lecture de la config en NVS (Preferences).
  *  2. Si NVS vide → mode AP + portail captif → enrôlement dynamique.
  *  3. Sinon → connexion WiFi + heartbeat vers le serveur toutes les 5s.
  *  4. Appui long (> 5s) sur le bouton BOOT → wipe NVS + redémarrage.
- *  5. Réception d'une impulsion (champs pulse_id et pulse_ms dans la réponse) :
- *     l'ESP32 met le GPIO à HIGH pendant pulse_ms ms, puis remet à LOW.
- *     last_pulse_id est persisté en NVS pour éviter les doublons après reboot.
- *
- * WiFi de configuration :
- *   SSID : Telerelais
- *   Password : mosquito
- *   URL portail : http://192.168.4.1/
+ *  5. Réception d'une impulsion : GPIO relais HIGH pendant pulse_ms ms.
+ *  6. Contact GPIO 14 fermé : relais forcé ON, priorité absolue.
  */
 
 #include <WiFi.h>
@@ -34,12 +38,15 @@ const char* SERVER_HOST    = "relais.pythonanywhere.com";
 const char* ENROLL_URL     = "https://relais.pythonanywhere.com/api/enroll";
 const char* HEARTBEAT_URL  = "https://relais.pythonanywhere.com/api/heartbeat";
 
-const int PIN_RELAY        = 4;
-const int PIN_STATUS_LED   = 2;
-const int PIN_BOOT_BUTTON  = 0;
+const int PIN_RELAY          = 16;   // Relais sur cette carte AC-powered
+const int PIN_STATUS_LED     = 23;   // LED bleue en haut à droite
+const int PIN_BOOT_BUTTON    = 0;    // Bouton BOOT (IO0)
+const int PIN_PHYSICAL_INPUT = 14;   // Contact sec externe (forçage physique)
 
 const unsigned long HEARTBEAT_INTERVAL_MS   = 5000;
 const unsigned long BOOT_LONG_PRESS_MS      = 5000;
+const unsigned long PHYSICAL_POLL_MS        = 50;    // Lecture contact
+const unsigned long PHYSICAL_DEBOUNCE_MS    = 100;   // Filtrage anti-rebond
 const unsigned long AP_CAPTIVE_DNS_PORT     = 53;
 
 const char* AP_SSID        = "Telerelais";
@@ -48,7 +55,7 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.3.0";
+const char* FW_VERSION = "0.4.0";
 
 // =========================================================================
 // État runtime
@@ -67,6 +74,15 @@ bool          relayState      = false;
 unsigned long lastHeartbeat   = 0;
 unsigned long bootPressStart  = 0;
 
+// Forçage physique (contact GPIO 14)
+bool          physicalOverride     = false;   // État confirmé (débouncé)
+bool          physicalRawLast      = true;    // Dernière lecture brute (HIGH=ouvert)
+unsigned long physicalStableSince  = 0;       // Depuis quand la lecture brute est stable
+unsigned long lastPhysicalPoll     = 0;
+
+// Consigne serveur (utilisée quand physicalOverride est off)
+bool          serverDesiredOn = false;
+
 Preferences   prefs;
 WebServer     apServer(80);
 DNSServer     dnsServer;
@@ -79,12 +95,7 @@ int32_t  lastPulseId = 0;
 
 
 // =========================================================================
-// LED d'état
-//   BOOT             : LED éteinte
-//   AP_MODE          : double flash court (2 blinks toutes les secondes)
-//   WIFI_CONNECTING  : blink rapide (200 ms)
-//   ONLINE_OK        : LED allumée fixe
-//   ONLINE_ERROR     : blink lent (1 s)
+// LED d'état (inchangée)
 // =========================================================================
 
 void updateStatusLed() {
@@ -124,7 +135,7 @@ void updateStatusLed() {
 
 
 // =========================================================================
-// Relais
+// Relais et application de la consigne finale
 // =========================================================================
 
 void applyRelayState(bool on) {
@@ -135,9 +146,52 @@ void applyRelayState(bool on) {
   digitalWrite(PIN_RELAY, on ? HIGH : LOW);
 }
 
+// Calcule la consigne finale en tenant compte du forçage physique (prioritaire).
+void applyEffectiveState() {
+  bool effective = physicalOverride ? true : serverDesiredOn;
+  applyRelayState(effective);
+}
+
 
 // =========================================================================
-// NVS (Preferences)
+// Lecture du contact physique (GPIO 14) avec anti-rebond
+// =========================================================================
+
+void pollPhysicalInput() {
+  unsigned long now = millis();
+  if (now - lastPhysicalPoll < PHYSICAL_POLL_MS) return;
+  lastPhysicalPoll = now;
+
+  // INPUT_PULLUP : au repos HIGH, contact fermé LOW.
+  bool rawClosed = (digitalRead(PIN_PHYSICAL_INPUT) == LOW);
+  bool rawState  = !rawClosed;   // true si "ouvert" (repos)
+
+  // Si la lecture brute change, on redémarre le compteur de stabilité.
+  if (rawState != physicalRawLast) {
+    physicalRawLast = rawState;
+    physicalStableSince = now;
+    return;
+  }
+
+  // Si la lecture brute est stable depuis assez longtemps ET différente de l'état
+  // confirmé, on met à jour l'état confirmé (débouncé).
+  if (now - physicalStableSince >= PHYSICAL_DEBOUNCE_MS) {
+    bool newOverride = rawClosed;
+    if (newOverride != physicalOverride) {
+      physicalOverride = newOverride;
+      Serial.printf("[PHYSICAL] contact %s -> forçage %s\n",
+                    rawClosed ? "FERMÉ" : "OUVERT",
+                    physicalOverride ? "ACTIF" : "inactif");
+      // Applique immédiatement la nouvelle consigne effective, sans attendre
+      // le prochain heartbeat pour une réactivité maximale.
+      applyEffectiveState();
+    }
+  }
+}
+
+
+// =========================================================================
+// NVS (Preferences) — inchangé
 // =========================================================================
 
 void loadConfig() {
@@ -186,7 +240,7 @@ void wipeConfig() {
 
 
 // =========================================================================
-// Enrôlement HTTPS
+// Enrôlement HTTPS — inchangé
 // =========================================================================
 
 bool enrollWithCode(const String& code, String& outToken, String& outSiteName, String& outError) {
@@ -243,7 +297,7 @@ bool enrollWithCode(const String& code, String& outToken, String& outSiteName, S
 
 
 // =========================================================================
-// Mode AP + portail captif
+// Mode AP + portail captif — inchangé (HTML identique v0.3.0)
 // =========================================================================
 
 const char CAPTIVE_HTML[] PROGMEM = R"rawliteral(
@@ -439,6 +493,8 @@ void connectWiFi() {
   while (WiFi.status() != WL_CONNECTED) {
     updateStatusLed();
     checkBootButton();
+    pollPhysicalInput();   // Le contact physique reste actif même si WiFi down
+    applyEffectiveState(); // Applique le forçage physique même hors ligne
     delay(100);
     if (millis() - start > 30000) {
       Serial.println("[WIFI] Timeout, retry");
@@ -454,7 +510,7 @@ void connectWiFi() {
 
 
 // =========================================================================
-// Heartbeat HTTPS — gère schedule ET pulse
+// Heartbeat HTTPS — enrichi avec physical_override
 // =========================================================================
 
 bool sendHeartbeat() {
@@ -470,10 +526,11 @@ bool sendHeartbeat() {
   http.addHeader("Content-Type", "application/json");
   http.addHeader("Authorization", String("Bearer ") + configDeviceToken);
 
-  StaticJsonDocument<192> reqDoc;
+  StaticJsonDocument<256> reqDoc;
   reqDoc["state"] = relayState ? "on" : "off";
   reqDoc["fw"]    = FW_VERSION;
   reqDoc["last_pulse_id"] = lastPulseId;
+  reqDoc["physical_override"] = physicalOverride;
   String reqBody;
   serializeJson(reqDoc, reqBody);
 
@@ -508,13 +565,17 @@ bool sendHeartbeat() {
     return false;
   }
 
-  // 1. État désiré (toujours présent ; pour sites pulse, c'est "off")
+  // Récupère la consigne serveur (elle n'est appliquée que si physicalOverride est off,
+  // ce que garantit applyEffectiveState).
   const char* desired = respDoc["desired"];
   if (desired) {
-    applyRelayState(strcmp(desired, "on") == 0);
+    serverDesiredOn = (strcmp(desired, "on") == 0);
+    applyEffectiveState();
   }
 
-  // 2. Impulsion ? (présent uniquement pour sites pulse avec demande en attente)
+  // Impulsion en attente ? (uniquement sites pulse)
+  // Note : une impulsion pendant un forçage physique actif reste appliquée
+  // — c'est un pulse ponctuel, il ne s'oppose pas au forçage.
   int32_t pulseId = respDoc["pulse_id"] | 0;
   int32_t pulseMs = respDoc["pulse_ms"] | 0;
 
@@ -525,8 +586,12 @@ bool sendHeartbeat() {
     digitalWrite(PIN_RELAY, LOW);
     savePulseId(pulseId);
     Serial.println("[PULSE] terminée");
+    // Après l'impulsion, on remet l'état effectif normal
+    applyEffectiveState();
   } else {
-    Serial.printf("[HB] OK desired=%s\n", desired ? desired : "?");
+    Serial.printf("[HB] OK desired=%s override=%s\n",
+                  desired ? desired : "?",
+                  physicalOverride ? "1" : "0");
   }
 
   return true;
@@ -534,7 +599,7 @@ bool sendHeartbeat() {
 
 
 // =========================================================================
-// Bouton BOOT (reset config si appui long)
+// Bouton BOOT — inchangé
 // =========================================================================
 
 void checkBootButton() {
@@ -562,11 +627,19 @@ void setup() {
   delay(500);
   Serial.printf("\n\n=== Telerelais firmware %s ===\n", FW_VERSION);
 
-  pinMode(PIN_RELAY,       OUTPUT);
-  pinMode(PIN_STATUS_LED,  OUTPUT);
-  pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
+  pinMode(PIN_RELAY,          OUTPUT);
+  pinMode(PIN_STATUS_LED,     OUTPUT);
+  pinMode(PIN_BOOT_BUTTON,    INPUT_PULLUP);
+  pinMode(PIN_PHYSICAL_INPUT, INPUT_PULLUP);
   digitalWrite(PIN_RELAY,      LOW);
   digitalWrite(PIN_STATUS_LED, LOW);
+
+  // Initialisation de l'état débouncé du contact physique
+  physicalRawLast     = (digitalRead(PIN_PHYSICAL_INPUT) == HIGH);
+  physicalOverride    = !physicalRawLast;
+  physicalStableSince = millis();
+  Serial.printf("[PHYSICAL] État initial : %s\n",
+                physicalOverride ? "FORCÉ ON" : "normal");
 
   loadConfig();
 
@@ -576,12 +649,14 @@ void setup() {
   } else {
     connectWiFi();
     currentState = STATE_ONLINE_OK;
+    applyEffectiveState();
   }
 }
 
 void loop() {
   updateStatusLed();
   checkBootButton();
+  pollPhysicalInput();
 
   if (currentState == STATE_AP_MODE) {
     loopApMode();
