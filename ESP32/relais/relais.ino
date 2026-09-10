@@ -11,6 +11,11 @@
  *  5. Réception d'une impulsion (champs pulse_id et pulse_ms dans la réponse) :
  *     l'ESP32 met le GPIO à HIGH pendant pulse_ms ms, puis remet à LOW.
  *     last_pulse_id est persisté en NVS pour éviter les doublons après reboot.
+ *
+ * WiFi de configuration :
+ *   SSID : Telerelais
+ *   Password : mosquito
+ *   URL portail : http://192.168.4.1/
  */
 
 #include <WiFi.h>
@@ -75,6 +80,11 @@ int32_t  lastPulseId = 0;
 
 // =========================================================================
 // LED d'état
+//   BOOT             : LED éteinte
+//   AP_MODE          : double flash court (2 blinks toutes les secondes)
+//   WIFI_CONNECTING  : blink rapide (200 ms)
+//   ONLINE_OK        : LED allumée fixe
+//   ONLINE_ERROR     : blink lent (1 s)
 // =========================================================================
 
 void updateStatusLed() {
@@ -152,7 +162,7 @@ void saveConfig(const String& ssid, const String& password,
   prefs.putString("password", password);
   prefs.putString("token", token);
   prefs.putString("site", siteName);
-  prefs.putInt("pulse_id", 0);    // reset pour la nouvelle association
+  prefs.putInt("pulse_id", 0);
   prefs.end();
   lastPulseId = 0;
   Serial.println("[NVS] Config sauvegardée");
@@ -262,7 +272,7 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 <body>
 <div class="card">
 <h1>Configuration Telerelais</h1>
-<p class="sub">Renseignez les informations pour mettre en service cet ESP32.</p>
+<p class="sub">Renseignez les informations pour mettre en service cet appareil.</p>
 <form id="f" method="POST" action="/save">
 <label>Réseau WiFi</label>
 <select name="ssid" id="ssid" required></select>
@@ -271,7 +281,7 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 <input type="password" name="password" required>
 <label>Code d'enrôlement</label>
 <input type="text" name="code" required placeholder="123456" inputmode="numeric" pattern="[0-9]*" maxlength="6">
-<div class="hint">Obtenu depuis le portail Telerelais.</div>
+<div class="hint">Code à 6 chiffres obtenu depuis le portail Telerelais.</div>
 <button type="submit" id="btn">Valider</button>
 </form>
 <div id="msg"></div>
@@ -296,7 +306,7 @@ document.getElementById('f').onsubmit = function(e) {
     var msg = document.getElementById('msg');
     if (resp.ok) {
       msg.className = 'ok';
-      msg.textContent = 'Configuration réussie pour « ' + resp.site + ' ». L\'ESP32 va redémarrer.';
+      msg.textContent = 'Configuration réussie pour « ' + resp.site + ' ». L\'appareil va redémarrer.';
     } else {
       msg.className = 'err';
       msg.textContent = 'Erreur : ' + resp.error;
@@ -339,7 +349,6 @@ void handleSave() {
   String password = apServer.arg("password");
   String code     = apServer.arg("code");
   code.trim();
-  code.toUpperCase();
 
   Serial.printf("[AP] Tentative : ssid='%s' code='%s'\n", ssid.c_str(), code.c_str());
 
@@ -525,7 +534,7 @@ bool sendHeartbeat() {
 
 
 // =========================================================================
-// Bouton BOOT
+// Bouton BOOT (reset config si appui long)
 // =========================================================================
 
 void checkBootButton() {
