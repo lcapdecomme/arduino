@@ -55,7 +55,7 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.4.0";
+const char* FW_VERSION = "0.4.2";
 
 // =========================================================================
 // État runtime
@@ -321,6 +321,10 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 .err { margin-top: 16px; padding: 12px; background: #fee2e2; color: #991b1b; border-radius: 6px; font-size: 14px; }
 .ok { margin-top: 16px; padding: 12px; background: #d1fae5; color: #065f46; border-radius: 6px; font-size: 14px; }
 .hint { font-size: 12px; color: #6b7280; margin-top: 4px; }
+.pwd-wrap { position: relative; }
+.pwd-wrap input { padding-right: 44px; }
+.pwd-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 6px; margin: 0; width: auto; font-size: 18px; cursor: pointer; color: #6b7280; }
+.pwd-toggle:hover { color: #111827; background: none; }
 </style>
 </head>
 <body>
@@ -329,10 +333,20 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 <p class="sub">Renseignez les informations pour mettre en service cet appareil.</p>
 <form id="f" method="POST" action="/save">
 <label>Réseau WiFi</label>
-<select name="ssid" id="ssid" required></select>
-<div class="hint">Si votre réseau n'apparaît pas, rechargez la page.</div>
+<select name="ssid_select" id="ssid_select"></select>
+<div class="hint">Si votre réseau n'apparaît pas, rechargez la page ou cochez « réseau caché ».</div>
+<label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:12px;cursor:pointer;">
+  <input type="checkbox" id="hidden_toggle" style="width:auto;margin:0;"> Réseau caché (saisie manuelle)
+</label>
+<div id="ssid_manual_wrap" style="display:none;">
+  <label>Nom du réseau (SSID)</label>
+  <input type="text" name="ssid_manual" id="ssid_manual" maxlength="32" autocomplete="off">
+</div>
 <label>Mot de passe WiFi</label>
-<input type="password" name="password" required>
+<div class="pwd-wrap">
+<input type="password" name="password" id="password" required>
+<button type="button" class="pwd-toggle" id="pwd_toggle" aria-label="Afficher le mot de passe">👁</button>
+</div>
 <label>Code d'enrôlement</label>
 <input type="text" name="code" required placeholder="123456" inputmode="numeric" pattern="[0-9]*" maxlength="6">
 <div class="hint">Code à 6 chiffres obtenu depuis le portail Telerelais.</div>
@@ -342,7 +356,7 @@ button:disabled { background: #9ca3af; cursor: not-allowed; }
 </div>
 <script>
 fetch('/scan').then(r => r.json()).then(nets => {
-  var sel = document.getElementById('ssid');
+  var sel = document.getElementById('ssid_select');
   nets.forEach(function(n) {
     var opt = document.createElement('option');
     opt.value = n.ssid;
@@ -350,6 +364,25 @@ fetch('/scan').then(r => r.json()).then(nets => {
     sel.appendChild(opt);
   });
 });
+document.getElementById('hidden_toggle').onchange = function(e) {
+  var hidden = e.target.checked;
+  document.getElementById('ssid_manual_wrap').style.display = hidden ? 'block' : 'none';
+  document.getElementById('ssid_select').disabled = hidden;
+  document.getElementById('ssid_manual').required = hidden;
+  document.getElementById('ssid_select').required = !hidden;
+};
+document.getElementById('ssid_select').required = true;
+document.getElementById('pwd_toggle').onclick = function() {
+  var pwd = document.getElementById('password');
+  var btn = document.getElementById('pwd_toggle');
+  if (pwd.type === 'password') {
+    pwd.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    pwd.type = 'password';
+    btn.textContent = '👁';
+  }
+};
 document.getElementById('f').onsubmit = function(e) {
   e.preventDefault();
   var btn = document.getElementById('btn');
@@ -399,7 +432,11 @@ void handleScan() {
 }
 
 void handleSave() {
-  String ssid     = apServer.arg("ssid");
+  String ssidSelect = apServer.arg("ssid_select");
+  String ssidManual = apServer.arg("ssid_manual");
+  ssidSelect.trim();
+  ssidManual.trim();
+  String ssid = ssidManual.length() > 0 ? ssidManual : ssidSelect;
   String password = apServer.arg("password");
   String code     = apServer.arg("code");
   code.trim();
