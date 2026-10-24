@@ -1,6 +1,11 @@
 /*
  * Telerelais — Firmware ESP32 — version 0.4.0
  *
+ * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement (une impulsion) et lacher immediatement les deux boutons
+ * 
+ * Une fois sur Telerelais, saisir le mot de passe mosquito
+ *
+ *
  * Compatible avec les sites de type 'schedule' (planning) et 'pulse' (impulsion).
  *
  * Nouveauté v0.4.0 : forçage physique local via un contact sec sur GPIO 14.
