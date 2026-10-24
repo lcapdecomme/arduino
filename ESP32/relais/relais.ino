@@ -4,6 +4,9 @@
  * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion) 
  * et lacher immediatement les deux boutons
  * 
+ * Par contre; le réseau Telerelais ne sera visible une fois désalimenté et realimenté
+ * (d'ailleurs a ce moment la led bleu se met à clignoter)
+ * 
  * Une fois sur Telerelais, saisir le mot de passe mosquito
  *
  *
