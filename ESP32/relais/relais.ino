@@ -1,5 +1,5 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.0
+ * Telerelais — Firmware ESP32 — version 0.4.3
  *
  * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion) 
  * et lacher immediatement les deux boutons
