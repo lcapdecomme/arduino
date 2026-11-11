@@ -1,5 +1,5 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.5
+ * Telerelais — Firmware ESP32 — version 0.4.6
  *
  * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion) 
  * et lacher immediatement les deux boutons
@@ -65,7 +65,7 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.4.5";
+const char* FW_VERSION = "0.4.6";
 
 const uint32_t WATCHDOG_TIMEOUT_S     = 120;   // Reboot hardware si loop() figé > 2 min
 const int      MAX_HEARTBEAT_FAILURES = 12;    // 12 × 5s = 1 min sans contact serveur → reboot
@@ -696,19 +696,10 @@ void setup() {
 
   loadConfig();
 
-  if (configSSID.length() == 0 || configDeviceToken.length() == 0) {
+   if (configSSID.length() == 0 || configDeviceToken.length() == 0) {
     Serial.println("[BOOT] Config manquante, démarrage en mode AP");
     startApMode();
   } else {
-    esp_task_wdt_config_t wdtCfg = {
-      .timeout_ms = WATCHDOG_TIMEOUT_S * 1000,
-      .idle_core_mask = 0,
-      .trigger_panic = true,
-    };
-    esp_task_wdt_reconfigure(&wdtCfg);
-    esp_task_wdt_add(NULL);
-    Serial.printf("[WDT] Watchdog hardware armé (%ds)\n", WATCHDOG_TIMEOUT_S);
-
     connectWiFi();
     currentState = STATE_ONLINE_OK;
     applyEffectiveState();
@@ -717,8 +708,6 @@ void setup() {
 
 
 void loop() {
-  esp_task_wdt_reset();
-
   updateStatusLed();
   checkBootButton();
   pollPhysicalInput();
@@ -737,16 +726,6 @@ void loop() {
     lastHeartbeat = millis();
     bool ok = sendHeartbeat();
     currentState = ok ? STATE_ONLINE_OK : STATE_ONLINE_ERROR;
-
-    if (!ok) {
-      heartbeatFailureCount++;
-      Serial.printf("[HB] Échec %d/%d\n", heartbeatFailureCount, MAX_HEARTBEAT_FAILURES);
-      if (heartbeatFailureCount >= MAX_HEARTBEAT_FAILURES) {
-        Serial.println("[HB] Trop d'échecs consécutifs, reboot volontaire.");
-        delay(100);
-        ESP.restart();
-      }
-    }
   }
 
   delay(50);
