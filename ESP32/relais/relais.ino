@@ -1,5 +1,5 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.4
+ * Telerelais — Firmware ESP32 — version 0.4.5
  *
  * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion) 
  * et lacher immediatement les deux boutons
@@ -65,7 +65,7 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.4.3";
+const char* FW_VERSION = "0.4.5";
 
 const uint32_t WATCHDOG_TIMEOUT_S     = 120;   // Reboot hardware si loop() figé > 2 min
 const int      MAX_HEARTBEAT_FAILURES = 12;    // 12 × 5s = 1 min sans contact serveur → reboot
@@ -681,15 +681,6 @@ void setup() {
   delay(500);
   Serial.printf("\n\n=== Telerelais firmware %s ===\n", FW_VERSION);
 
-  esp_task_wdt_config_t wdtCfg = {
-    .timeout_ms = WATCHDOG_TIMEOUT_S * 1000,
-    .idle_core_mask = 0,
-    .trigger_panic = true,
-  };
-  esp_task_wdt_reconfigure(&wdtCfg);
-  esp_task_wdt_add(NULL);
-  Serial.printf("[WDT] Watchdog hardware armé (%ds)\n", WATCHDOG_TIMEOUT_S);
-
   pinMode(PIN_RELAY,          OUTPUT);
   pinMode(PIN_STATUS_LED,     OUTPUT);
   pinMode(PIN_BOOT_BUTTON,    INPUT_PULLUP);
@@ -697,7 +688,6 @@ void setup() {
   digitalWrite(PIN_RELAY,      LOW);
   digitalWrite(PIN_STATUS_LED, LOW);
 
-  // Initialisation de l'état débouncé du contact physique
   physicalRawLast     = (digitalRead(PIN_PHYSICAL_INPUT) == HIGH);
   physicalOverride    = !physicalRawLast;
   physicalStableSince = millis();
@@ -710,11 +700,21 @@ void setup() {
     Serial.println("[BOOT] Config manquante, démarrage en mode AP");
     startApMode();
   } else {
+    esp_task_wdt_config_t wdtCfg = {
+      .timeout_ms = WATCHDOG_TIMEOUT_S * 1000,
+      .idle_core_mask = 0,
+      .trigger_panic = true,
+    };
+    esp_task_wdt_reconfigure(&wdtCfg);
+    esp_task_wdt_add(NULL);
+    Serial.printf("[WDT] Watchdog hardware armé (%ds)\n", WATCHDOG_TIMEOUT_S);
+
     connectWiFi();
     currentState = STATE_ONLINE_OK;
     applyEffectiveState();
   }
 }
+
 
 void loop() {
   esp_task_wdt_reset();
