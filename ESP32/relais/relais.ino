@@ -1,14 +1,5 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.6
- *
- * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion) 
- * et lacher immediatement les deux boutons
- * 
- * Par contre; le réseau Telerelais ne sera visible une fois désalimenté et realimenté
- * (d'ailleurs a ce moment la led bleu se met à clignoter)
- * 
- * Une fois sur Telerelais, saisir le mot de passe mosquito
- *
+ * Telerelais — Firmware ESP32 — version 0.4.0
  *
  * Compatible avec les sites de type 'schedule' (planning) et 'pulse' (impulsion).
  *
@@ -38,7 +29,6 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
-#include <esp_task_wdt.h>
 
 // =========================================================================
 // CONFIG
@@ -65,11 +55,7 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.4.6";
-
-const uint32_t WATCHDOG_TIMEOUT_S     = 120;   // Reboot hardware si loop() figé > 2 min
-const int      MAX_HEARTBEAT_FAILURES = 12;    // 12 × 5s = 1 min sans contact serveur → reboot
-int            heartbeatFailureCount  = 0;
+const char* FW_VERSION = "0.4.2";
 
 // =========================================================================
 // État runtime
@@ -462,7 +448,6 @@ void handleSave() {
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    esp_task_wdt_reset();
     delay(200);
   }
 
@@ -543,11 +528,10 @@ void connectWiFi() {
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    esp_task_wdt_reset();
     updateStatusLed();
     checkBootButton();
-    pollPhysicalInput();
-    applyEffectiveState();
+    pollPhysicalInput();   // Le contact physique reste actif même si WiFi down
+    applyEffectiveState(); // Applique le forçage physique même hors ligne
     delay(100);
     if (millis() - start > 30000) {
       Serial.println("[WIFI] Timeout, retry");
@@ -556,7 +540,8 @@ void connectWiFi() {
       WiFi.begin(configSSID.c_str(), configPassword.c_str());
       start = millis();
     }
-  }  Serial.print("[WIFI] Connecté, IP = ");
+  }
+  Serial.print("[WIFI] Connecté, IP = ");
   Serial.println(WiFi.localIP());
 }
 
@@ -607,8 +592,6 @@ bool sendHeartbeat() {
     http.end();
     return false;
   }
-
-  heartbeatFailureCount = 0;
 
   String respBody = http.getString();
   http.end();
@@ -688,6 +671,7 @@ void setup() {
   digitalWrite(PIN_RELAY,      LOW);
   digitalWrite(PIN_STATUS_LED, LOW);
 
+  // Initialisation de l'état débouncé du contact physique
   physicalRawLast     = (digitalRead(PIN_PHYSICAL_INPUT) == HIGH);
   physicalOverride    = !physicalRawLast;
   physicalStableSince = millis();
@@ -696,7 +680,7 @@ void setup() {
 
   loadConfig();
 
-   if (configSSID.length() == 0 || configDeviceToken.length() == 0) {
+  if (configSSID.length() == 0 || configDeviceToken.length() == 0) {
     Serial.println("[BOOT] Config manquante, démarrage en mode AP");
     startApMode();
   } else {
@@ -705,7 +689,6 @@ void setup() {
     applyEffectiveState();
   }
 }
-
 
 void loop() {
   updateStatusLed();
