@@ -1,5 +1,5 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.3
+ * Telerelais — Firmware ESP32 — version 0.4.4
  *
  * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion) 
  * et lacher immediatement les deux boutons
@@ -462,6 +462,7 @@ void handleSave() {
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
+    esp_task_wdt_reset();
     delay(200);
   }
 
@@ -542,10 +543,11 @@ void connectWiFi() {
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    esp_task_wdt_reset();
     updateStatusLed();
     checkBootButton();
-    pollPhysicalInput();   // Le contact physique reste actif même si WiFi down
-    applyEffectiveState(); // Applique le forçage physique même hors ligne
+    pollPhysicalInput();
+    applyEffectiveState();
     delay(100);
     if (millis() - start > 30000) {
       Serial.println("[WIFI] Timeout, retry");
@@ -554,8 +556,7 @@ void connectWiFi() {
       WiFi.begin(configSSID.c_str(), configPassword.c_str());
       start = millis();
     }
-  }
-  Serial.print("[WIFI] Connecté, IP = ");
+  }  Serial.print("[WIFI] Connecté, IP = ");
   Serial.println(WiFi.localIP());
 }
 
