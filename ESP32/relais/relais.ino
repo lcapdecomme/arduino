@@ -1,5 +1,14 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.0
+ * Telerelais — Firmware ESP32 — version 0.4.7
+ *
+ * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion)
+ * et lacher immediatement les deux boutons
+ *
+ * Par contre; le réseau Telerelais ne sera visible une fois désalimenté et realimenté
+ * (d'ailleurs a ce moment la led bleu se met à clignoter)
+ *
+ * Une fois sur Telerelais, saisir le mot de passe mosquito
+ *
  *
  * Compatible avec les sites de type 'schedule' (planning) et 'pulse' (impulsion).
  *
@@ -12,6 +21,12 @@
  *   - Un fil sur GPIO 14
  *   - Un fil sur GND
  *   - Le contact ferme quand les deux fils se touchent.
+ *
+ * Nouveauté v0.4.7 : watchdog hardware et compteur d'échecs HB
+ *   - Watchdog armé UNIQUEMENT en mode normal, APRÈS la 1ère connexion WiFi réussie
+ *     (jamais en mode AP, jamais pendant l'attente de connexion initiale)
+ *   - Reboot automatique si loop() se fige > 2 min
+ *   - Reboot volontaire après 12 heartbeats échoués consécutifs (1 min sans serveur)
  *
  * Cycle de vie :
  *  1. Au boot, lecture de la config en NVS (Preferences).
@@ -29,6 +44,7 @@
 #include <DNSServer.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h>
 
 // =========================================================================
 // CONFIG
@@ -55,7 +71,12 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.4.2";
+const char* FW_VERSION = "0.4.7";
+
+const uint32_t WATCHDOG_TIMEOUT_S     = 120;   // Reboot hardware si loop() figé > 2 min
+const int      MAX_HEARTBEAT_FAILURES = 12;    // 12 × 5s = 1 min sans contact serveur → reboot
+int            heartbeatFailureCount  = 0;
+bool           watchdogArmed          = false; // true une fois esp_task_wdt_add() appelé
 
 // =========================================================================
 // État runtime
@@ -92,6 +113,17 @@ String   configPassword;
 String   configDeviceToken;
 String   configSiteName;
 int32_t  lastPulseId = 0;
+
+
+// =========================================================================
+// Helper watchdog : reset sécurisé (ne fait rien si WDT pas encore armé)
+// =========================================================================
+
+inline void safeWdtReset() {
+  if (watchdogArmed) {
+    esp_task_wdt_reset();
+  }
+}
 
 
 // =========================================================================
@@ -166,15 +198,12 @@ void pollPhysicalInput() {
   bool rawClosed = (digitalRead(PIN_PHYSICAL_INPUT) == LOW);
   bool rawState  = !rawClosed;   // true si "ouvert" (repos)
 
-  // Si la lecture brute change, on redémarre le compteur de stabilité.
   if (rawState != physicalRawLast) {
     physicalRawLast = rawState;
     physicalStableSince = now;
     return;
   }
 
-  // Si la lecture brute est stable depuis assez longtemps ET différente de l'état
-  // confirmé, on met à jour l'état confirmé (débouncé).
   if (now - physicalStableSince >= PHYSICAL_DEBOUNCE_MS) {
     bool newOverride = rawClosed;
     if (newOverride != physicalOverride) {
@@ -182,8 +211,6 @@ void pollPhysicalInput() {
       Serial.printf("[PHYSICAL] contact %s -> forçage %s\n",
                     rawClosed ? "FERMÉ" : "OUVERT",
                     physicalOverride ? "ACTIF" : "inactif");
-      // Applique immédiatement la nouvelle consigne effective, sans attendre
-      // le prochain heartbeat pour une réactivité maximale.
       applyEffectiveState();
     }
   }
@@ -191,7 +218,7 @@ void pollPhysicalInput() {
 
 
 // =========================================================================
-// NVS (Preferences) — inchangé
+// NVS (Preferences)
 // =========================================================================
 
 void loadConfig() {
@@ -240,7 +267,7 @@ void wipeConfig() {
 
 
 // =========================================================================
-// Enrôlement HTTPS — inchangé
+// Enrôlement HTTPS
 // =========================================================================
 
 bool enrollWithCode(const String& code, String& outToken, String& outSiteName, String& outError) {
@@ -297,7 +324,7 @@ bool enrollWithCode(const String& code, String& outToken, String& outSiteName, S
 
 
 // =========================================================================
-// Mode AP + portail captif — inchangé (HTML identique v0.3.0)
+// Mode AP + portail captif
 // =========================================================================
 
 const char CAPTIVE_HTML[] PROGMEM = R"rawliteral(
@@ -528,10 +555,11 @@ void connectWiFi() {
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED) {
+    safeWdtReset();
     updateStatusLed();
     checkBootButton();
-    pollPhysicalInput();   // Le contact physique reste actif même si WiFi down
-    applyEffectiveState(); // Applique le forçage physique même hors ligne
+    pollPhysicalInput();
+    applyEffectiveState();
     delay(100);
     if (millis() - start > 30000) {
       Serial.println("[WIFI] Timeout, retry");
@@ -547,7 +575,26 @@ void connectWiFi() {
 
 
 // =========================================================================
-// Heartbeat HTTPS — enrichi avec physical_override
+// Armement du watchdog (appelé une fois, après la 1ère connexion WiFi)
+// =========================================================================
+
+void armWatchdog() {
+  if (watchdogArmed) return;
+
+  esp_task_wdt_config_t wdtCfg = {
+    .timeout_ms = WATCHDOG_TIMEOUT_S * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_task_wdt_reconfigure(&wdtCfg);
+  esp_task_wdt_add(NULL);
+  watchdogArmed = true;
+  Serial.printf("[WDT] Watchdog hardware armé (%ds)\n", WATCHDOG_TIMEOUT_S);
+}
+
+
+// =========================================================================
+// Heartbeat HTTPS
 // =========================================================================
 
 bool sendHeartbeat() {
@@ -593,6 +640,8 @@ bool sendHeartbeat() {
     return false;
   }
 
+  heartbeatFailureCount = 0;
+
   String respBody = http.getString();
   http.end();
 
@@ -602,17 +651,12 @@ bool sendHeartbeat() {
     return false;
   }
 
-  // Récupère la consigne serveur (elle n'est appliquée que si physicalOverride est off,
-  // ce que garantit applyEffectiveState).
   const char* desired = respDoc["desired"];
   if (desired) {
     serverDesiredOn = (strcmp(desired, "on") == 0);
     applyEffectiveState();
   }
 
-  // Impulsion en attente ? (uniquement sites pulse)
-  // Note : une impulsion pendant un forçage physique actif reste appliquée
-  // — c'est un pulse ponctuel, il ne s'oppose pas au forçage.
   int32_t pulseId = respDoc["pulse_id"] | 0;
   int32_t pulseMs = respDoc["pulse_ms"] | 0;
 
@@ -623,7 +667,6 @@ bool sendHeartbeat() {
     digitalWrite(PIN_RELAY, LOW);
     savePulseId(pulseId);
     Serial.println("[PULSE] terminée");
-    // Après l'impulsion, on remet l'état effectif normal
     applyEffectiveState();
   } else {
     Serial.printf("[HB] OK desired=%s override=%s\n",
@@ -636,7 +679,7 @@ bool sendHeartbeat() {
 
 
 // =========================================================================
-// Bouton BOOT — inchangé
+// Bouton BOOT
 // =========================================================================
 
 void checkBootButton() {
@@ -671,7 +714,6 @@ void setup() {
   digitalWrite(PIN_RELAY,      LOW);
   digitalWrite(PIN_STATUS_LED, LOW);
 
-  // Initialisation de l'état débouncé du contact physique
   physicalRawLast     = (digitalRead(PIN_PHYSICAL_INPUT) == HIGH);
   physicalOverride    = !physicalRawLast;
   physicalStableSince = millis();
@@ -685,12 +727,18 @@ void setup() {
     startApMode();
   } else {
     connectWiFi();
+    // Watchdog armé APRÈS la 1ère connexion WiFi réussie : évite les reboots
+    // en boucle si le WiFi n'est pas joignable au démarrage.
+    armWatchdog();
     currentState = STATE_ONLINE_OK;
     applyEffectiveState();
   }
 }
 
+
 void loop() {
+  safeWdtReset();
+
   updateStatusLed();
   checkBootButton();
   pollPhysicalInput();
@@ -709,6 +757,16 @@ void loop() {
     lastHeartbeat = millis();
     bool ok = sendHeartbeat();
     currentState = ok ? STATE_ONLINE_OK : STATE_ONLINE_ERROR;
+
+    if (!ok) {
+      heartbeatFailureCount++;
+      Serial.printf("[HB] Échec %d/%d\n", heartbeatFailureCount, MAX_HEARTBEAT_FAILURES);
+      if (heartbeatFailureCount >= MAX_HEARTBEAT_FAILURES) {
+        Serial.println("[HB] Trop d'échecs consécutifs, reboot volontaire.");
+        delay(100);
+        ESP.restart();
+      }
+    }
   }
 
   delay(50);
