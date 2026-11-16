@@ -1,5 +1,5 @@
 /*
- * Telerelais — Firmware ESP32 — version 0.4.7
+ * Telerelais — Firmware ESP32 — version 0.4.8
  *
  * Pour la programmation, maintenir la touche I0O maintenu et appuyez brievement sur la touche EN (une impulsion)
  * et lacher immediatement les deux boutons
@@ -71,7 +71,8 @@ const IPAddress AP_IP(192, 168, 4, 1);
 const IPAddress AP_GATEWAY(192, 168, 4, 1);
 const IPAddress AP_SUBNET(255, 255, 255, 0);
 
-const char* FW_VERSION = "0.4.7";
+const char* FW_VERSION = "0.4.8";
+bool        bootReported = false;
 
 const uint32_t WATCHDOG_TIMEOUT_S     = 120;   // Reboot hardware si loop() figé > 2 min
 const int      MAX_HEARTBEAT_FAILURES = 12;    // 12 × 5s = 1 min sans contact serveur → reboot
@@ -615,6 +616,7 @@ bool sendHeartbeat() {
   reqDoc["fw"]    = FW_VERSION;
   reqDoc["last_pulse_id"] = lastPulseId;
   reqDoc["physical_override"] = physicalOverride;
+  if (!bootReported) reqDoc["boot_reason"] = (int)esp_reset_reason();
   String reqBody;
   serializeJson(reqDoc, reqBody);
 
@@ -641,6 +643,7 @@ bool sendHeartbeat() {
   }
 
   heartbeatFailureCount = 0;
+  bootReported = true;
 
   String respBody = http.getString();
   http.end();
